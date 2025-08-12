@@ -1,0 +1,101 @@
+name: 'Sign RPM Package'
+author: 'OpenCHAMI'
+branding:
+  icon: 'package'
+  color: 'blue'
+description: 'Signs an RPM using the provided GPG key fingerprint (expects GNUPGHOME from previous step)'
+
+inputs:
+  rpm-path:
+    description: 'Path to the RPM file to sign'
+    required: true
+  gpg-fingerprint:
+    description: 'Fingerprint of the GPG key to use for signing'
+    required: true
+  gnupg-home:
+    description: 'GNUPGHOME directory (optional). If not provided, current default will be used.'
+    required: false
+  resign:
+    description: 'If true, addsign even if already signed.'
+    default: 'false'
+
+outputs:
+  verification:
+    description: 'Result of rpm --checksig'
+    value: ${{ steps.verify.outputs.result }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install RPM tools
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v apt-get >/dev/null 2>&1; then
+          apt-get update -y
+          apt-get install -y --no-install-recommends rpm gnupg
+        elif command -v dnf >/dev/null 2>&1; then
+          dnf install -y rpm-build gnupg
+        fi
+
+
+
+    - name: Configure RPM to use GPG key
+      shell: bash
+      env:
+        GNUPGHOME: ${{ inputs['gnupg-home'] }}
+      run: |
+        set -euo pipefail
+        GPG_BIN="$(command -v gpg || command -v gpg2)"
+        {
+          echo "%_signature gpg"
+          echo "%_gpg_name ${{ inputs['gpg-fingerprint'] }}"
+          echo "%__gpg $GPG_BIN"
+          echo "%_gpg_digest_algo sha256"   # <—
+        } >> "$HOME/.rpmmacros"
+        echo "Using gpg at: $GPG_BIN"
+        rpm --eval "%{__gpg}" || true
+
+    - name: Sign the RPM
+      shell: bash
+      env:
+        GNUPGHOME: ${{ inputs['gnupg-home'] }}
+      run: |
+        set -euo pipefail
+        echo "GNUPGHOME=$GNUPGHOME"
+        gpg --list-secret-keys || { echo "No secret keys in GNUPGHOME"; exit 1; }
+
+        # If already signed and resign=false, skip
+        if rpm --checksig "${{ inputs['rpm-path'] }}" 2>/dev/null | grep -qi 'pgp signature'; then
+          if [ "${{ inputs.resign }}" = "true" ]; then
+            rpm --delsign "${{ inputs['rpm-path'] }}" || true
+          else
+            echo "Already signed; skipping (set resign=true to force)."
+            exit 0
+          fi
+        fi
+
+        # Use rpmsign (more reliable) with explicit defines
+        rpmsign --addsign \
+          --define "_signature gpg" \
+          --define "_gpg_name ${{ inputs['gpg-fingerprint'] }}" \
+          --define "__gpg $(command -v gpg)" \
+          --define "_gpg_digest_algo sha256" \
+          "${{ inputs['rpm-path'] }}"
+
+    - name: Import Signer Public Key for Verification
+      shell: bash
+      run: |
+        set -euo pipefail
+        gpg --armor --export "${{ inputs.gpg-fingerprint }}" > signer.pub
+        rpm --import signer.pub 2>/dev/null || sudo rpm --import signer.pub 2>/dev/null || true
+        rm -f signer.pub
+
+    - name: Verify RPM signature
+      id: verify
+      shell: bash
+      run: |
+        set -euo pipefail
+        out=$(rpm --checksig "${{ inputs.rpm-path }}")
+        echo "$out"
+        echo "result=$out" >> "$GITHUB_OUTPUT"

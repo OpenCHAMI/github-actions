@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: actionlint
+        uses: raven-actions/actionlint@v1
+
+  test-actions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate ephemeral key
+        id: gpg
+        uses: ./actions/gpg-ephemeral-key
+        with:
+          subkey-armored: ${{ secrets.GPG_SUBKEY_B64 }}
+          comment: test-ci
+          cleanup: false
+    
+      - name: Create test file
+        run: echo "This is a test payload" > test.txt
+
+      - name: Sign test file with ephemeral key
+        run: |
+          GNUPGHOME="${{ steps.gpg.outputs.gnupg-home }}"
+          export GNUPGHOME
+          gpg --batch --yes --local-user "${{ steps.gpg.outputs.ephemeral-fingerprint }}" --output test.txt.sig --detach-sign test.txt
+          gpg --verify test.txt.sig test.txt
+
+      - name: Show trust chain
+        run: |
+          GNUPGHOME="${{ steps.gpg.outputs.gnupg-home }}"
+          export GNUPGHOME
+          echo "Ephemeral key fingerprint: ${{ steps.gpg.outputs.ephemeral-fingerprint }}"
+          gpg --list-keys --with-colons
+          gpg --list-sigs "${{ steps.gpg.outputs.ephemeral-fingerprint }}"
+          gpg --check-trustdb
+
+      - name: Install fpm and dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ruby ruby-dev build-essential rpm gnupg
+          gem install --user-install --no-document fpm
+          # Ensure Ruby gem bin dir is in PATH for future steps
+          echo "$(ruby -e 'print Gem.bindir')" >> $GITHUB_PATH
+
+      - name: Build dummy RPM
+        run: |
+          # Ensure Gem.bindir is in PATH so fpm can be found
+          export PATH="$(ruby -e 'print Gem.bindir'):$PATH"
+
+          # Show where fpm is
+          echo "Gem.bindir is: $(ruby -e 'print Gem.bindir')"
+          which /root/.local/share/gem/ruby/3.0.0/bin/fpm || { echo "ERROR: fpm not found"; exit 1; }
+          /root/.local/share/gem/ruby/3.0.0/bin/fpm --version
+          mkdir -p dist
+          echo 'dummy' > dist/dummy.txt
+          /root/.local/share/gem/ruby/3.0.0/bin/fpm -s dir -t rpm -n dummy --rpm-digest sha256 -v 0.1 dist/dummy.txt
+
+      - name: Sign dummy RPM using ephemeral key
+        id: sign
+        uses: ./actions/sign-rpm
+        with:
+          rpm-path: ./dummy-0.1-1.x86_64.rpm
+          gpg-fingerprint: ${{ steps.gpg.outputs.ephemeral-fingerprint }}
+          gnupg-home:      ${{ steps.gpg.outputs.gnupg-home }}
+
+      - name: Show verification
+        run: "echo \"Verification: ${{ steps.sign.outputs.verification }}\""

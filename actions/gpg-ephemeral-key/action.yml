@@ -1,0 +1,168 @@
+name: 'Generate and Sign Ephemeral GPG Key'
+author: 'OpenCHAMI'
+branding:
+  icon: 'key'
+  color: 'purple'
+description: 'Creates an ephemeral GPG key per build and signs it with a repo-scoped subkey'
+
+inputs:
+  subkey-armored:
+    description: 'Base64-encoded ASCII-armored GPG subkey (secret) used to sign the ephemeral key'
+    required: true
+  name:
+    description: 'Name (real) for the ephemeral key'
+    default: 'Ephemeral Key'
+  comment:
+    description: 'Additional comment / metadata (will have a random suffix appended)'
+    default: ''
+  email:
+    description: 'Email for the ephemeral key'
+    default: 'ci@build.local'
+  key-length:
+    description: 'RSA key length'
+    default: '3072'
+  expire-days:
+    description: 'Expiration in days for the ephemeral key'
+    default: '1'
+  cleanup:
+    description: 'If true, remove GNUPGHOME (keys) after export. Set to false if later steps need the key.'
+    default: 'false'
+
+outputs:
+  ephemeral-fingerprint:
+    description: 'Fingerprint of the generated ephemeral key'
+    value: ${{ steps.fpr.outputs.fingerprint }}
+  ephemeral-public-key:
+    description: 'Base64 of ASCII-armored ephemeral public key'
+    value: ${{ steps.export.outputs.pubkey }}
+  gnupg-home:
+    description: 'Path to isolated GNUPGHOME for subsequent actions'
+    value: ${{ steps.setup.outputs.gnupghome }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: setup
+      shell: bash
+      run: |
+        set -euo pipefail
+        GNUPGHOME="$(mktemp -d)"
+        chmod 700 "$GNUPGHOME"
+        echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+        echo "gnupghome=$GNUPGHOME" >> "$GITHUB_OUTPUT"
+        sudo apt-get update -y
+        sudo apt-get install -y --no-install-recommends gnupg
+
+    - id: import
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "Importing subkey..."
+
+        # Save subkey
+        decoded=$(echo "${{ inputs.subkey-armored }}" | base64 -d 2>/dev/null || true)
+        if [[ -z "$decoded" ]]; then
+          echo "ERROR: subkey-armored input is invalid or empty!" >&2
+          exit 1
+        fi
+
+        echo "$decoded" > subkey.asc
+
+        # Import key
+        gpg --batch --import subkey.asc || {
+          echo "ERROR: Failed to import subkey" >&2
+          exit 1
+        }
+
+        # List keys for debug
+        echo "::group::GPG secret keys"
+        gpg --list-secret-keys
+        echo "::endgroup::"
+
+        # Get signer fingerprint
+        signer_fpr=$(gpg --batch --with-colons --list-secret-keys | awk -F: '/^sec:/ {print $5; exit}')
+        if [[ -z "$signer_fpr" ]]; then
+          echo "ERROR: No secret key found after import" >&2
+          gpg --list-secret-keys --with-colons
+          exit 1
+        fi
+
+        echo "Using SIGNER_FPR=$signer_fpr"
+        echo "SIGNER_FPR=$signer_fpr" >> "$GITHUB_ENV"
+
+        shred -u subkey.asc || rm -f subkey.asc
+
+
+    - id: generate
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Sanitize user inputs to avoid config injection
+        safe_name=$(printf '%s' "${{ inputs.name }}" | tr -cd '[:alnum:] ._@-')
+        safe_comment=$(printf '%s' "${{ inputs.comment }}" | tr -cd '[:alnum:] ._@:-')
+        safe_email=$(printf '%s' "${{ inputs.email }}" | tr -cd '[:alnum:]@._-')
+        marker=$(openssl rand -hex 6 2>/dev/null || date +%s)
+        safe_comment="$safe_comment build-${GITHUB_RUN_ID:-0}-$marker"
+        echo "MARKER=$marker" >> "$GITHUB_ENV"
+        expire_days="${{ inputs.expire-days }}"
+        key_length="${{ inputs.key-length }}"
+
+        printf "%%no-protection\n" > keygen.conf
+        printf "Key-Type: RSA\n" >> keygen.conf
+        printf "Key-Length: %s\n" "$key_length" >> keygen.conf
+        printf "Name-Real: %s\n" "$safe_name" >> keygen.conf
+        printf "Name-Comment: %s\n" "$safe_comment" >> keygen.conf
+        printf "Name-Email: %s\n" "$safe_email" >> keygen.conf
+        printf "Expire-Date: %sd\n" "$expire_days" >> keygen.conf
+        printf "Key-Usage: sign\n" >> keygen.conf
+        printf "%%commit\n" >> keygen.conf
+
+        gpg --batch --gen-key keygen.conf
+        shred -u keygen.conf || rm -f keygen.conf
+
+    - id: fpr
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "Available keys for debug:"
+        gpg --list-keys
+
+        ephemeral_fpr=$(gpg --with-colons --list-keys | awk -F: -v m="${MARKER:-}" '
+          /^fpr:/ { fpr=$10 }
+          /^uid:/ {
+            if (index($10, m) > 0) {
+              print fpr
+              exit
+            }
+          }')
+
+
+        if [ -z "$ephemeral_fpr" ]; then
+          echo "Failed to locate ephemeral key fingerprint" >&2
+          exit 1
+        fi
+        echo "fingerprint=$ephemeral_fpr" >> "$GITHUB_OUTPUT"
+        echo "EPHEMERAL_FPR=$ephemeral_fpr" >> "$GITHUB_ENV"
+
+    - id: sign-ephemeral
+      shell: bash
+      run: |
+        set -euo pipefail
+        gpg --batch --yes --quick-sign-key --local-user "$SIGNER_FPR" "$EPHEMERAL_FPR"
+
+    - id: export
+      shell: bash
+      run: |
+        set -euo pipefail
+        gpg --armor --export "$EPHEMERAL_FPR" > pub.asc
+        b64=$(base64 < pub.asc | tr -d '\n')
+        echo "pubkey=$b64" >> "$GITHUB_OUTPUT"
+        shred -u pub.asc || rm -f pub.asc
+
+    - id: optional-cleanup
+      if: ${{ inputs.cleanup == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        rm -rf "$GNUPGHOME"
