@@ -6,7 +6,7 @@ Reusable GitHub Actions for CI/CD.
 
 - `actions/gpg-ephemeral-key`: Ephemeral key generation for RPM/GPG signing
 - `actions/sign-rpm`: RPM signing with ephemeral keys
-- `.github/workflows/go-build-release.yml`: Reusable workflow for GoReleaser builds
+- `workflows/go-build-release.yml`: Reusable workflow for GoReleaser builds
 
 ## Versioning & Usage
 
@@ -20,7 +20,7 @@ Use major version tags for stability:
 # For reusable workflows
 jobs:
   release:
-    uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v2
+    uses: OpenCHAMI/github-actions/workflows/go-build-release.yml@v2
 ```
 
 Pin a commit SHA internally for maximum supply‑chain safety if desired.
@@ -39,7 +39,7 @@ Standardized GoReleaser workflow for building and releasing Go applications with
 ```yaml
 jobs:
   release:
-    uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v2
+    uses: OpenCHAMI/github-actions/workflows/go-build-release.yml@v2
     with:
       pre-build-commands: |
         go install github.com/swaggo/swag/cmd/swag@latest
@@ -48,8 +48,7 @@ jobs:
 
 ```
 
-**Documentation:** [docs/go-build-release.md](docs/go-build-release.md)
-**Examples:** [examples/](examples/)
+See the [workflow](workflows/go-build-release.yml) for additional input parameters.
 
 ### gpg-ephemeral-key
 Generates a short‑lived RSA key (default 3072‑bit, 1 day) using an isolated `GNUPGHOME`, signs it with a repo‑scoped subkey you provide, and outputs:
