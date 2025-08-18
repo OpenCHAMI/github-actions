@@ -56,7 +56,7 @@ on:
 permissions: write-all # Necessary for the generate-build-provenance action with containers
 
 jobs:
-  build:
+  build_and_release:
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go
