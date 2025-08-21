@@ -52,6 +52,11 @@ on:
         description: 'Container registry name (e.g., ghcr.io/openchami/project-name) to Generate build provenance for container'
         required: true
         type: string
+      snapshot:
+        description: 'Snapshot mode: auto (default - snapshot if not a tag), true (force snapshot), false (force regular release)'
+        required: false
+        type: string
+        default: 'auto'
 
 permissions: write-all # Necessary for the generate-build-provenance action with containers
 
@@ -105,13 +110,29 @@ jobs:
         if: ${{ inputs.pre-build-commands != '' }}
         run: ${{ inputs.pre-build-commands }}
 
+      - name: Determine snapshot flags
+        id: snapshot_flags
+        run: |
+          if [[ "${{ inputs.snapshot }}" == "true" ]]; then
+            echo "flags=--snapshot" >> $GITHUB_OUTPUT
+          elif [[ "${{ inputs.snapshot }}" == "false" ]]; then
+            echo "flags=" >> $GITHUB_OUTPUT
+          else
+            # auto mode - snapshot if not a tag
+            if [[ "${{ github.ref }}" != refs/tags/v* ]]; then
+              echo "flags=--snapshot" >> $GITHUB_OUTPUT
+            else
+              echo "flags=" >> $GITHUB_OUTPUT
+            fi
+          fi
+
       - name: Release with GoReleaser
         uses: goreleaser/goreleaser-action@v6
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           version: ${{ inputs.goreleaser-version }}
-          args: ${{ inputs.goreleaser-args }}
+          args: ${{ inputs.goreleaser-args }} ${{ steps.snapshot_flags.outputs.flags }}
         id: goreleaser
 
       - name: Process GoReleaser output
