@@ -137,6 +137,7 @@ jobs:
 
       - name: Process GoReleaser output
         id: process_goreleaser_output
+        if: ${{ !contains(steps.snapshot_flags.outputs.flags, '--snapshot') }}
         run: |
           echo "const fs = require('fs');" > process.js
           echo 'const artifacts = ${{ steps.goreleaser.outputs.artifacts }}' >> process.js
@@ -152,7 +153,7 @@ jobs:
           subject-path: ${{ inputs.attestation-binary-path }}
 
       - name: Generate build provenance for container
-        if: ${{ steps.process_goreleaser_output.outputs.digest != '' && steps.process_goreleaser_output.outputs.digest != 'undefined' }}
+        if: ${{ !contains(steps.snapshot_flags.outputs.flags, '--snapshot') && steps.process_goreleaser_output.outputs.digest != '' && steps.process_goreleaser_output.outputs.digest != 'undefined' }}
         uses: actions/attest-build-provenance@v1
         with:
           subject-name: ${{ inputs.registry-name }}
