@@ -20,7 +20,7 @@ Use major version tags for stability:
 # For reusable workflows
 jobs:
   release:
-    uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v3.1
+    uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v3.2
 ```
 
 Pin a commit SHA internally for maximum supply‑chain safety if desired.
@@ -49,7 +49,7 @@ on:
 
 jobs:
   release:
-    uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v3.1
+    uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v3.2
     with:
       pre-build-commands: |
         go install github.com/swaggo/swag/cmd/swag@latest
