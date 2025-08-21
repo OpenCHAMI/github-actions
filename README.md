@@ -6,19 +6,49 @@ Reusable GitHub Actions for CI/CD.
 
 - `actions/gpg-ephemeral-key`: Ephemeral key generation for RPM/GPG signing
 - `actions/sign-rpm`: RPM signing with ephemeral keys
+- `workflows/go-build-release.yml`: Reusable workflow for GoReleaser builds
 
 ## Versioning & Usage
 
 Use major version tags for stability:
 
 ```yaml
+# For actions
 - uses: OpenCHAMI/github-actions/actions/gpg-ephemeral-key@v1
 - uses: OpenCHAMI/github-actions/actions/sign-rpm@v1
+
+# For reusable workflows
+jobs:
+  release:
+    uses: OpenCHAMI/github-actions/workflows/go-build-release.yml@v2
 ```
 
 Pin a commit SHA internally for maximum supply‑chain safety if desired.
 
-## Actions Overview
+## Actions and Workflows Overview
+
+### go-build-release (Reusable Workflow)
+Standardized GoReleaser workflow for building and releasing Go applications with:
+- Multi-architecture builds (linux/amd64, linux/arm64)
+- Flexible pre-build setup steps
+- Wraps `goreleaser-action` action with all .gorelease.yaml configurations
+- Container image builds and publishing
+- Binary and container attestation/signing
+
+**Usage:**
+```yaml
+jobs:
+  release:
+    uses: OpenCHAMI/github-actions/workflows/go-build-release.yml@v2
+    with:
+      pre-build-commands: |
+        go install github.com/swaggo/swag/cmd/swag@latest
+      attestation-binary-path: "dist/cloud-init*"
+      registry-name: ghcr.io/openchami/cloud-init
+
+```
+
+See the [workflow](workflows/go-build-release.yml) for additional input parameters.
 
 ### gpg-ephemeral-key
 Generates a short‑lived RSA key (default 3072‑bit, 1 day) using an isolated `GNUPGHOME`, signs it with a repo‑scoped subkey you provide, and outputs:
