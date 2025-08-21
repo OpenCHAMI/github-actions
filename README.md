@@ -38,6 +38,15 @@ Standardized GoReleaser workflow for building and releasing Go applications with
 
 **Usage:**
 ```yaml
+name: Release with goreleaser
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    tags:
+      - v*
+
 jobs:
   release:
     uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v3.1
