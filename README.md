@@ -6,11 +6,7 @@ Reusable GitHub Actions for CI/CD.
 
 - `actions/gpg-ephemeral-key`: Ephemeral key generation for RPM/GPG signing
 - `actions/sign-rpm`: RPM signing with ephemeral keys
-<<<<<<< HEAD
-- `workflows/go-build-release.yml`: Reusable workflow for GoReleaser builds
-=======
 - `.github/workflows/go-build-release.yml`: Reusable workflow for GoReleaser builds
->>>>>>> bb095e3 (reusable workflow for go build release using goreleaser)
 
 ## Versioning & Usage
 
@@ -57,7 +53,6 @@ See the [workflow](workflows/go-build-release.yml) for additional input paramete
 =======
 **Documentation:** [docs/go-build-release.md](docs/go-build-release.md)
 **Examples:** [examples/](examples/)
->>>>>>> bb095e3 (reusable workflow for go build release using goreleaser)
 
 ### gpg-ephemeral-key
 Generates a short‑lived RSA key (default 3072‑bit, 1 day) using an isolated `GNUPGHOME`, signs it with a repo‑scoped subkey you provide, and outputs:
