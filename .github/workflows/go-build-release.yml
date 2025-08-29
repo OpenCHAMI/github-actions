@@ -1,4 +1,5 @@
-name: Go Build and Release with GoReleaser
+name: GoReleaser
+run-name: GoReleaser ${{ (inputs.snapshot == 'true' || (inputs.snapshot != 'false' && !startsWith(github.ref, 'refs/tags/v'))) && 'Snapshot' || 'Release' }}
 
 on:
   workflow_call:
@@ -61,7 +62,8 @@ on:
 permissions: write-all # Necessary for the generate-build-provenance action with containers
 
 jobs:
-  build_and_release:
+  goreleaser:
+    name: GoReleaser ${{ (inputs.snapshot == 'true' || (inputs.snapshot != 'false' && !startsWith(github.ref, 'refs/tags/v'))) && 'Snapshot' || 'Release' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go
@@ -126,14 +128,14 @@ jobs:
             fi
           fi
 
-      - name: Release with GoReleaser
+      - name: GoReleaser ${{ inputs.goreleaser-args }} ${{ steps.snapshot_flags.outputs.flags }}
+        id: goreleaser
         uses: goreleaser/goreleaser-action@v6
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           version: ${{ inputs.goreleaser-version }}
           args: ${{ inputs.goreleaser-args }} ${{ steps.snapshot_flags.outputs.flags }}
-        id: goreleaser
 
       - name: Process GoReleaser output
         id: process_goreleaser_output
