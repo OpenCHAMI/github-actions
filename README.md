@@ -20,7 +20,7 @@ Use major version tags for stability:
 # For reusable workflows
 jobs:
   release:
-    uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v3.2
+    uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v3.3
 ```
 
 Pin a commit SHA internally for maximum supply‑chain safety if desired.
@@ -38,7 +38,8 @@ Standardized GoReleaser workflow for building and releasing Go applications with
 
 **Usage:**
 ```yaml
-name: Release with goreleaser
+name: GoReleaser
+run-name: GoReleaser ${{ startsWith(github.ref, 'refs/tags/v') && 'Release' || 'Snapshot' }}
 
 on:
   workflow_dispatch:
@@ -48,8 +49,9 @@ on:
       - v*
 
 jobs:
-  release:
-    uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v3.2
+  goreleaser:
+    name: GoReleaser ${{ startsWith(github.ref, 'refs/tags/v') && 'Release' || 'Snapshot' }}
+    uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v3.3
     with:
       pre-build-commands: |
         go install github.com/swaggo/swag/cmd/swag@latest
