@@ -58,6 +58,16 @@ on:
         required: false
         type: string
         default: 'auto'
+      devel:
+        description: 'Create and upload a development build'
+        type: boolean
+        required: false
+        default: false
+      ref:
+        description: 'The commit hash for development builds'
+        required: false
+        type: string
+        default: ''
 
 permissions: write-all # Necessary for the generate-build-provenance action with containers
 
@@ -86,6 +96,7 @@ jobs:
         with:
           fetch-tags: ${{ inputs.fetch-tags }}
           fetch-depth: ${{ inputs.fetch-depth }}
+          ref: ${{ inputs.ref }}
 
       - name: Set build environment variables
         run: |
@@ -161,3 +172,22 @@ jobs:
           subject-name: ${{ inputs.registry-name }}
           subject-digest: ${{ steps.process_goreleaser_output.outputs.digest }}
           push-to-registry: true
+
+      # Credit to the https://github.com/goreleaser/goreleaser/issues/2828#issuecomment-1311662146 workaround
+      # for nightly/snapshot builds being locked behind the paid version of goreleaser.
+      - name: List snapshot images
+        # types are hard vov https://github.com/actions/runner/issues/2238
+        if: true
+        run: |
+          docker image ls --format "{{.Repository}}:{{.Tag}}" | \
+            grep -e "$GITHUB_REPOSITORY:.*$(git rev-parse --short HEAD).*" | \
+            paste -sd ' ' /dev/stdin > images
+      - name: Push snapshot images
+        if: true
+        run: |
+          cat images | xargs -d ' ' -I{} -n1 sh -c "docker push {}"
+      - name: Create and push manifest for :snapshot tag
+        if: true
+        run: |
+          docker manifest create $GITHUB_REPOSITORY:snapshot $(cat images)
+          docker manifest push $GITHUB_REPOSITORY:snapshot
