@@ -1,0 +1,164 @@
+name: Build image
+run-name: Dockeer image build for  ${{ github.event.push.ref }}
+
+on:
+  workflow_call:
+    inputs:
+      fetch-depth:
+        description: 'Git fetch depth for checkout'
+        required: false
+        type: number
+        default: 0
+      fetch-tags:
+        description: 'Whether to fetch tags during checkout'
+        required: false
+        type: number
+        default: 1
+      cgo-enabled:
+        description: 'Set CGO_ENABLED environment variable'
+        required: false
+        type: string
+        default: ''
+      additional-env-vars:
+        description: 'Additional environment variables to set (KEY=value format, one per line)'
+        required: false
+        type: string
+        default: ''
+      registry-name:
+        description: 'Container registry name (e.g., ghcr.io/openchami/project-name) to Generate build provenance for container'
+        required: true
+        type: string
+      docker-file:
+        description: 'Dockerfile to use'
+        required: false
+        type: string
+        default: 'Dockerfile'
+      docker-target:
+        description: 'Dockerfile target to build'
+        required: false
+        type: string
+        default: 'main'
+      platforms:
+        description: 'Platforms to build for'
+        type: string
+        default: 'linux/amd64, linux/arm64'
+
+permissions: write-all # Necessary for the generate-build-provenance action with containers
+
+jobs:
+  build-push-images:
+    environment: 'Docker Push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup golang
+        uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: go.mod
+
+      - run: echo "GOPATH=$(go env GOPATH)" >> "$GITHUB_ENV"
+
+      - run: echo "GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+
+      - name: Set CGO_ENABLED if specified
+        if: ${{ inputs.cgo-enabled != '' }}
+        run: echo "CGO_ENABLED=${{ inputs.cgo-enabled }}" >> "$GITHUB_ENV"
+
+      - name: Set additional environment variables
+        if: ${{ inputs.additional-env-vars != '' }}
+        run: |
+          # Process additional environment variables
+          echo "${{ inputs.additional-env-vars }}" | while IFS= read -r line; do
+            if [[ -n "$line" && "$line" == *"="* ]]; then
+              echo "$line" >> "$GITHUB_ENV"
+            fi
+          done
+
+      - name: Set up Docker Buildkit
+        uses: docker/setup-buildx-action@v3.11.1
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4.2.3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Fill image meta
+        id: meta
+        uses: docker/metadata-action@v5.8.0
+        with:
+          images: ${{ inputs.registry-name }}
+          tags: |
+            # branch event
+            type=ref,event=branch
+            # tag event
+            type=ref,event=tag
+            # pull request event
+            type=ref,event=pr
+
+      - name: Auth to registry
+        uses: docker/login-action@v3.5.0
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ghcr.io
+
+      - name: Build and push image
+        id: docker_build
+        uses: docker/build-push-action@v6.18.0
+        with:
+          push: true
+          file: ${{ inputs.docker-file }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Unclear how https://docs.docker.com/build/ci/github-actions/attestations/ interacts with
+          # multi-stage builds and cache. A separate build and cache step is useful if we copy the
+          # same binary to multiple images, but a single invocation may still be able to handle that?
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
+          provenance: mode=max
+          sbom: true
+          target: ${{ inputs.docker-target }}
+          platforms: ${{ inputs.platforms }}
+          build-args: |
+            "TAG=${{ steps.meta.outputs.version }}"
+            "COMMIT=${{ github.sha }}"
+            "REPO_INFO=https://github.com/${{ github.repository }}.git"
+            "GOPATH=${{ env.GOPATH}}"
+            "GOCACHE=${{ env.GOCACHE}}"
+            "CGO_ENABLED=${{ env.CGO_ENABLED }}"
+            "CC=${{ env.CC }}"
+      - name: Attest
+        uses: actions/attest-build-provenance@v3
+        id: attest
+        with:
+          subject-name: ${{ inputs.registry-name }}
+          subject-digest: ${{ steps.docker_build.outputs.digest }}
+          push-to-registry: true
+
+  publish-release:
+    runs-on: ubuntu-latest
+    needs: build-push-images
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+    - name: Parse semver string
+      id: semver_parser
+      uses: booxmedialtd/ws-action-parse-semver@v1.4.7
+      with:
+        input_string: ${{ github.event.ref }}
+        version_extractor_regex: 'refs/tags/v(.*)$'
+    - uses: ncipollo/release-action@v1.18.0
+      with:
+        # by default this will use the tag push tag as the tag and name
+        # if we want to trigger tagging from the workflow, "tag" and "commit"
+        # need to be set to create a new one
+        prerelease: ${{ steps.semver_parser.outputs.prerelease != '' }}
+        skipIfReleaseExists: true
