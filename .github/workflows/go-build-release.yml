@@ -100,14 +100,24 @@ jobs:
 
       - name: Set build environment variables
         run: |
-          echo "GIT_STATE=$(if git diff-index --quiet HEAD --; then echo 'clean'; else echo 'dirty'; fi)" >> $GITHUB_ENV
-          echo "BUILD_HOST=$(hostname)" >> $GITHUB_ENV
-          echo "GO_VERSION=$(go version | awk '{print $3}')" >> $GITHUB_ENV
-          echo "BUILD_USER=$(whoami)" >> $GITHUB_ENV
+          if git diff-index --quiet HEAD --; then
+            git_state='clean'
+          else
+            git_state='dirty'
+          fi
+          build_host=$(hostname)
+          go_version=$(go version | awk '{print $3}')
+          build_user=$(whoami)
+          {
+            echo "GIT_STATE=${git_state}"
+            echo "BUILD_HOST=${build_host}"
+            echo "GO_VERSION=${go_version}"
+            echo "BUILD_USER=${build_user}"
+          } >> "$GITHUB_ENV"
 
       - name: Set CGO_ENABLED if specified
         if: ${{ inputs.cgo-enabled != '' }}
-        run: echo "CGO_ENABLED=${{ inputs.cgo-enabled }}" >> $GITHUB_ENV
+        run: echo "CGO_ENABLED=${{ inputs.cgo-enabled }}" >> "$GITHUB_ENV"
 
       - name: Set additional environment variables
         if: ${{ inputs.additional-env-vars != '' }}
@@ -115,7 +125,7 @@ jobs:
           # Process additional environment variables
           echo "${{ inputs.additional-env-vars }}" | while IFS= read -r line; do
             if [[ -n "$line" && "$line" == *"="* ]]; then
-              echo "$line" >> $GITHUB_ENV
+              echo "$line" >> "$GITHUB_ENV"
             fi
           done
 
@@ -127,15 +137,16 @@ jobs:
         id: snapshot_flags
         run: |
           if [[ "${{ inputs.snapshot }}" == "true" ]]; then
-            echo "flags=--snapshot" >> $GITHUB_OUTPUT
+            echo "flags=--snapshot" >> "$GITHUB_OUTPUT"
           elif [[ "${{ inputs.snapshot }}" == "false" ]]; then
-            echo "flags=" >> $GITHUB_OUTPUT
+            echo "flags=" >> "$GITHUB_OUTPUT"
           else
             # auto mode - snapshot if not a tag
-            if [[ "${{ github.ref }}" != refs/tags/v* ]]; then
-              echo "flags=--snapshot" >> $GITHUB_OUTPUT
+            github_ref="${{ github.ref }}"
+            if [[ "$github_ref" != refs/tags/v* ]]; then
+              echo "flags=--snapshot" >> "$GITHUB_OUTPUT"
             else
-              echo "flags=" >> $GITHUB_OUTPUT
+              echo "flags=" >> "$GITHUB_OUTPUT"
             fi
           fi
 
@@ -152,13 +163,16 @@ jobs:
         id: process_goreleaser_output
         if: ${{ !contains(steps.snapshot_flags.outputs.flags, '--snapshot') }}
         run: |
-          echo "const fs = require('fs');" > process.js
-          echo 'const artifacts = ${{ steps.goreleaser.outputs.artifacts }}' >> process.js
-          echo "const firstNonNullDigest = artifacts.find(artifact => artifact.extra && artifact.extra.Digest != null)?.extra.Digest;" >> process.js
-          echo "console.log(firstNonNullDigest);" >> process.js
-          echo "fs.writeFileSync('digest.txt', firstNonNullDigest);" >> process.js
+          {
+            echo "const fs = require('fs');"
+            echo 'const artifacts = ${{ steps.goreleaser.outputs.artifacts }}'
+            echo "const firstNonNullDigest = artifacts.find(artifact => artifact.extra && artifact.extra.Digest != null)?.extra.Digest;"
+            echo "console.log(firstNonNullDigest);"
+            echo "fs.writeFileSync('digest.txt', firstNonNullDigest);"
+          } > process.js
           node process.js
-          echo "digest=$(cat digest.txt)" >> $GITHUB_OUTPUT
+          digest=$(cat digest.txt)
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
 
       - name: Attest Binaries
         uses: actions/attest-build-provenance@v1
@@ -179,15 +193,16 @@ jobs:
         # types are hard vov https://github.com/actions/runner/issues/2238
         if: true
         run: |
+          short_sha=$(git rev-parse --short HEAD)
           docker image ls --format "{{.Repository}}:{{.Tag}}" | \
-            grep -e "$GITHUB_REPOSITORY:.*$(git rev-parse --short HEAD).*" | \
+            grep -e "$GITHUB_REPOSITORY:.*${short_sha}.*" | \
             paste -sd ' ' /dev/stdin > images
       - name: Push snapshot images
         if: true
         run: |
-          cat images | xargs -d ' ' -I{} -n1 sh -c "docker push {}"
+          xargs -d ' ' -I{} -n1 sh -c "docker push {}" < images
       - name: Create and push manifest for :snapshot tag
         if: true
         run: |
-          docker manifest create $GITHUB_REPOSITORY:snapshot $(cat images)
-          docker manifest push $GITHUB_REPOSITORY:snapshot
+          docker manifest create "$GITHUB_REPOSITORY:snapshot" "$(cat images)"
+          docker manifest push "$GITHUB_REPOSITORY:snapshot"

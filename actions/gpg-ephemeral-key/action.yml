@@ -1,7 +1,7 @@
 name: 'Generate and Sign Ephemeral GPG Key'
 author: 'OpenCHAMI'
 branding:
-  icon: 'key'
+  icon: 'lock'
   color: 'purple'
 description: 'Creates an ephemeral GPG key per build and signs it with a repo-scoped subkey'
 

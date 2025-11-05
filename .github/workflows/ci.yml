@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: actionlint
-        uses: raven-actions/actionlint@v1
+        uses: raven-actions/actionlint@v2.0.1
 
   test-actions:
     runs-on: ubuntu-latest
@@ -50,15 +50,16 @@ jobs:
           sudo apt-get install -y ruby ruby-dev build-essential rpm gnupg
           gem install --user-install --no-document fpm
           # Ensure Ruby gem bin dir is in PATH for future steps
-          echo "$(ruby -e 'print Gem.bindir')" >> $GITHUB_PATH
+          ruby -e 'print Gem.bindir' >> "$GITHUB_PATH"
 
       - name: Build dummy RPM
         run: |
           # Ensure Gem.bindir is in PATH so fpm can be found
-          export PATH="$(ruby -e 'print Gem.bindir'):$PATH"
+          gem_bindir=$(ruby -e 'print Gem.bindir')
+          export PATH="${gem_bindir}:$PATH"
 
           # Show where fpm is
-          echo "Gem.bindir is: $(ruby -e 'print Gem.bindir')"
+          echo "Gem.bindir is: ${gem_bindir}"
           which /root/.local/share/gem/ruby/3.0.0/bin/fpm || { echo "ERROR: fpm not found"; exit 1; }
           /root/.local/share/gem/ruby/3.0.0/bin/fpm --version
           mkdir -p dist
