@@ -22,8 +22,7 @@ on:
       cgo-enabled:
         description: 'Set CGO_ENABLED environment variable'
         required: false
-        type: string
-        default: ''
+        type: number
       additional-env-vars:
         description: 'Additional environment variables to set (KEY=value format, one per line)'
         required: false
@@ -116,7 +115,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Set CGO_ENABLED if specified
-        if: ${{ inputs.cgo-enabled != '' }}
+        if: ${{ inputs.cgo-enabled != null }}
         run: echo "CGO_ENABLED=${{ inputs.cgo-enabled }}" >> "$GITHUB_ENV"
 
       - name: Set additional environment variables
