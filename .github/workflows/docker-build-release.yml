@@ -42,8 +42,13 @@ on:
         description: 'Platforms to build for'
         type: string
         default: 'linux/amd64, linux/arm64'
+      image-description:
+        description: 'Container image description for metadata'
+        required: false
+        type: string
+        default: ''
 
-permissions: write-all # Necessary for the generate-build-provenance action with containers
+permissions: write-all # Necessary for provenance and SBOM attestations
 
 jobs:
   build-push-images:
@@ -101,6 +106,8 @@ jobs:
             type=ref,event=tag
             # pull request event
             type=ref,event=pr
+          labels: |
+            org.opencontainers.image.description=${{ inputs.image-description }}
 
       - name: Auth to registry
         uses: docker/login-action@v3.5.0
@@ -117,11 +124,9 @@ jobs:
           file: ${{ inputs.docker-file }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Unclear how https://docs.docker.com/build/ci/github-actions/attestations/ interacts with
-          # multi-stage builds and cache. A separate build and cache step is useful if we copy the
-          # same binary to multiple images, but a single invocation may still be able to handle that?
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
+          # Built-in attestations work better with multi-arch than separate attest action
           provenance: mode=max
           sbom: true
           target: ${{ inputs.docker-target }}
@@ -133,14 +138,7 @@ jobs:
             "GOPATH=${{ env.GOPATH}}"
             "GOCACHE=${{ env.GOCACHE}}"
             "CGO_ENABLED=${{ env.CGO_ENABLED }}"
-            "CC=${{ env.CC }}"
-      - name: Attest
-        uses: actions/attest-build-provenance@v3
-        id: attest
-        with:
-          subject-name: ${{ inputs.registry-name }}
-          subject-digest: ${{ steps.docker_build.outputs.digest }}
-          push-to-registry: true
+            ${{ env.CC != '' && format('"CC={0}"', env.CC) || '' }}
 
   publish-release:
     runs-on: ubuntu-latest
