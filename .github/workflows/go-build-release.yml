@@ -186,23 +186,3 @@ jobs:
           subject-name: ${{ inputs.registry-name }}
           subject-digest: ${{ steps.process_goreleaser_output.outputs.digest }}
           push-to-registry: true
-
-      # Credit to the https://github.com/goreleaser/goreleaser/issues/2828#issuecomment-1311662146 workaround
-      # for nightly/snapshot builds being locked behind the paid version of goreleaser.
-      - name: List snapshot images
-        # types are hard vov https://github.com/actions/runner/issues/2238
-        if: true
-        run: |
-          short_sha=$(git rev-parse --short HEAD)
-          docker image ls --format "{{.Repository}}:{{.Tag}}" | \
-            grep -e "$GITHUB_REPOSITORY:.*${short_sha}.*" | \
-            paste -sd ' ' /dev/stdin > images
-      - name: Push snapshot images
-        if: true
-        run: |
-          xargs -d ' ' -I{} -n1 sh -c "docker push {}" < images
-      - name: Create and push manifest for :snapshot tag
-        if: true
-        run: |
-          docker manifest create "$GITHUB_REPOSITORY:snapshot" "$(cat images)"
-          docker manifest push "$GITHUB_REPOSITORY:snapshot"
