@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
 name: trivy-image-scan
 
 # Reusable workflow that scans an already-built and -pushed container image

@@ -1,0 +1,7 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: OpenCHAMI GitHub Actions
+Source: https://github.com/OpenCHAMI/github-actions
+
+Files: bin/act subkey.asc subkey.b64
+Copyright: 2025 OpenCHAMI a Series of LF Projects, LLC
+License: MIT
