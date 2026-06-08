@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: trivy-image-scan
+
+# Reusable workflow that scans an already-built and -pushed container image
+# with Trivy. Emits SARIF and uploads it to GitHub Advanced Security so
+# findings land in the caller's Security tab.
+#
+# Expects the image to already exist (either in a registry or as a local
+# `docker save` tar at `image-path`). To run as a build-time gate inside
+# docker-build-release, call this workflow after the build step with the
+# fully-qualified `<registry>/<name>@<digest>` ref.
+
+on:
+  workflow_call:
+    inputs:
+      image-ref:
+        description: 'Image to scan (e.g., ghcr.io/openchami/foo@sha256:...)'
+        required: true
+        type: string
+      severity:
+        description: 'Comma-separated severities to report (default: HIGH,CRITICAL)'
+        required: false
+        type: string
+        default: 'HIGH,CRITICAL'
+      ignore-unfixed:
+        description: 'Skip vulnerabilities with no fix available'
+        required: false
+        type: boolean
+        default: false
+      exit-code:
+        description: 'Exit code when findings are present (0 = report only, 1 = fail)'
+        required: false
+        type: string
+        default: '1'
+
+permissions:
+  contents: read
+  security-events: write   # for SARIF upload to GHAS
+
+jobs:
+  trivy:
+    name: trivy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ inputs.image-ref }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: ${{ inputs.severity }}
+          ignore-unfixed: ${{ inputs.ignore-unfixed }}
+          exit-code: ${{ inputs.exit-code }}
+
+      - name: Upload SARIF to GHAS
+        if: always()   # upload findings even when scan fails the job
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-image-scan

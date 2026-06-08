@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: govulncheck
+
+# Reusable workflow that runs the Go team's vulnerability scanner against
+# the caller's module. Detects known CVEs in the import graph (including
+# transitive deps) and reports them as workflow annotations.
+#
+# Pair with the actionlint/zizmor lint workflow for a "static security
+# baseline" wave; pair with dependency-review for PR-time gating.
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: 'Go version to scan against (default: read from go.mod)'
+        required: false
+        type: string
+        default: ''
+      go-package:
+        description: 'Package pattern to scan (default: ./... — entire module)'
+        required: false
+        type: string
+        default: './...'
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1.0.4
+        with:
+          go-version-file: ${{ inputs.go-version == '' && 'go.mod' || '' }}
+          go-version-input: ${{ inputs.go-version }}
+          go-package: ${{ inputs.go-package }}

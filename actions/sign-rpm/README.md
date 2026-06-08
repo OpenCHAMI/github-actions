@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
+SPDX-License-Identifier: MIT
+-->
+
 # 📦 RPM Signing Action
 
 Signs an RPM file using a GPG key fingerprint (typically an ephemeral key produced by the `gpg-ephemeral-key` action). Designed to pair with ephemeral, short‑lived keys to reduce long‑term key exposure in CI.
