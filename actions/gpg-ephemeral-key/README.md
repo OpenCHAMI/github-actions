@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
+SPDX-License-Identifier: MIT
+-->
+
 # 🛡️ GPG Ephemeral Key Generator
 
 This GitHub composite action generates a new ephemeral GPG key on every build, signs it using a repo‑scoped subkey, and exports the fingerprint and public key. It’s designed for use in CI pipelines where artifacts need secure signing without long‑lived keys in GitHub Actions.
