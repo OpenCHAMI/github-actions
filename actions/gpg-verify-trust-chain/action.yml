@@ -1,0 +1,120 @@
+name: 'Verify gpg trust chain'
+description: >-
+  Verifies the release GPG trust chain (master certifies repo key, repo key certifies ephemeral key) and optionally checks RPM signatures. Standalone: installs its own dependencies and runs verify-chain.sh, fetched at runtime from a pinned commit in gpg-signing-manager.
+inputs:
+  master-public-key:
+    description: >-
+      ASCII-armored master public key content (e.g. from a secret). If empty and master-public-key-file is also empty, the chain check is skipped with a warning (exit 0) unless require-master is 'true'.
+    required: false
+    default: ''
+  master-public-key-file:
+    description: 'Path to the master public key file. Takes precedence over master-public-key.'
+    required: false
+    default: ''
+  repo-public-key-file:
+    description: 'Path to the repo public key, certified by the master key'
+    required: false
+    default: 'repo-public.asc'
+  ephemeral-public-key-file:
+    description: 'Path to the ephemeral public key, certified by the repo key'
+    required: false
+    default: 'ephemeral-public.asc'
+  rpm-dir:
+    description: >-
+      Directory searched recursively for *.rpm to signature-check. Empty dir or no matches is not an error; key-chain checks still run.
+    required: false
+    default: 'dist'
+  require-master:
+    description: "If 'true', fail instead of skipping when no master key is provided"
+    required: false
+    default: 'false'
+outputs:
+  verified:
+    description: "'true' if the chain was verified, 'skipped' if no master key was provided"
+    value: ${{ steps.verify.outputs.verified }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Install dependencies
+      shell: bash
+      run: |
+        need=()
+        command -v gpg >/dev/null 2>&1 || need+=(gnupg2)
+        command -v rpm >/dev/null 2>&1 || need+=(rpm)
+        [[ ${#need[@]} -eq 0 ]] && exit 0
+        SUDO=''
+        command -v sudo >/dev/null 2>&1 && SUDO=sudo
+        if command -v apt-get >/dev/null 2>&1; then
+          $SUDO apt-get update -qq
+          $SUDO apt-get install -y -qq "${need[@]/#rpm/rpm}"
+        elif command -v dnf >/dev/null 2>&1; then
+          $SUDO dnf install -y -q "${need[@]}"
+        else
+          echo '::error::Unsupported package manager: need apt-get or dnf' >&2
+          exit 1
+        fi
+    - name: Verify trust chain
+      id: verify
+      shell: bash
+      env:
+        MASTER_KEY_CONTENT: ${{ inputs.master-public-key }}
+        MASTER_KEY_FILE: ${{ inputs.master-public-key-file }}
+        REPO_KEY_FILE: ${{ inputs.repo-public-key-file }}
+        EPHEMERAL_KEY_FILE: ${{ inputs.ephemeral-public-key-file }}
+        RPM_DIR: ${{ inputs.rpm-dir }}
+        REQUIRE_MASTER: ${{ inputs.require-master }}
+      run: |-
+        set -euo pipefail
+
+        # --- Resolve the master public key -----------------------------------
+        workdir=$(mktemp -d)
+        trap 'rm -rf "$workdir"' EXIT
+
+        master_key=''
+        if [[ -n "$MASTER_KEY_FILE" ]]; then
+          master_key="$MASTER_KEY_FILE"
+        elif [[ -n "$MASTER_KEY_CONTENT" ]]; then
+          master_key="$workdir/master-public.asc"
+          printf '%s\n' "$MASTER_KEY_CONTENT" > "$master_key"
+        fi
+
+        if [[ -z "$master_key" ]]; then
+          if [[ "$REQUIRE_MASTER" == 'true' ]]; then
+            echo '::error::No master public key provided and require-master is true'
+            exit 1
+          fi
+          echo '::warning::No master public key provided; skipping trust chain verification'
+          echo 'verified=skipped' >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        for f in "$master_key" "$REPO_KEY_FILE" "$EPHEMERAL_KEY_FILE"; do
+          if [[ ! -f "$f" ]]; then
+            echo "::error::Key file not found: $f"
+            exit 1
+          fi
+        done
+
+        # --- Collect RPMs (optional) -----------------------------------------
+        rpm_args=()
+        if [[ -n "$RPM_DIR" && -d "$RPM_DIR" ]]; then
+          while IFS= read -r -d '' r; do
+            rpm_args+=(--rpm "$r")
+          done < <(find "$RPM_DIR" -name '*.rpm' -print0)
+        fi
+        if [[ ${#rpm_args[@]} -eq 0 ]]; then
+          echo "No RPMs found under '${RPM_DIR:-<none>}'; verifying key chain only."
+        fi
+
+        # --- Run the verifier ---------------------------------------
+        script="$workdir/verify-chain.sh"
+        curl -fsSL --retry 3 -o "$script" \
+         "https://raw.githubusercontent.com/OpenCHAMI/gpg-signing-manager/d4366a45c94be50cbb7f90d229c10f395b6d10d8/scripts/verify-chain.sh"
+
+        bash "$script" \
+          --master    "$master_key" \
+          --repo      "$REPO_KEY_FILE" \
+          --ephemeral "$EPHEMERAL_KEY_FILE" \
+          "${rpm_args[@]+"${rpm_args[@]}"}"
+
+        echo 'verified=true' >> "$GITHUB_OUTPUT"
