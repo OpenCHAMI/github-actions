@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: 'Check key expiration'
+author: 'OpenCHAMI'
+branding: { icon: 'clock', color: 'orange' }
+description: >-
+  Fails if the provided signing secret material is expired or expiring within
+  warn-days. Imports into an isolated, shredded GNUPGHOME; never touches the
+  runner default keyring.
+
+inputs:
+  repo-key-armored-b64:
+    description: >-
+      Base64-encoded ASCII-armored secret key export to check. b64 wrapping
+      exists only to survive newline mangling when provisioning the secret
+      (gh secret set); it is decoded exactly once here.
+    required: true
+  secret-name:
+    description: 'GitHub secret name expected to hold repo-key-armored-b64 (used in error messages only)'
+    required: false
+    default: 'GPG_REPO_KEY_B64'
+  legacy-secret-name:
+    description: 'Legacy secret name mentioned in migration hints (error messages only)'
+    required: false
+    default: 'GPG_SUBKEY_B64'
+  warn-days:
+    description: 'Fail if any key expires within this many days'
+    required: false
+    default: '30'
+
+runs:
+  using: composite
+  steps:
+    - name: Install GnuPG
+      shell: bash
+      run: |
+        set -euo pipefail
+        command -v gpg >/dev/null 2>&1 && exit 0
+        SUDO=''; command -v sudo >/dev/null 2>&1 && SUDO=sudo
+        if command -v apt-get >/dev/null 2>&1; then
+          $SUDO apt-get update -qq
+          $SUDO apt-get install -y -qq --no-install-recommends gnupg
+        elif command -v dnf >/dev/null 2>&1; then
+          $SUDO dnf install -y -q gnupg2
+        else
+          echo '::error::Unsupported package manager: need apt-get or dnf'
+          exit 1
+        fi
+
+    - name: Check signing key expiry
+      shell: bash
+      env:
+        REPO_KEY_ARMORED_B64: ${{ inputs.repo-key-armored-b64 }}
+        SECRET_NAME:          ${{ inputs.secret-name }}
+        LEGACY_SECRET_NAME:   ${{ inputs.legacy-secret-name }}
+        WARN_DAYS:            ${{ inputs.warn-days }}
+      run: |
+        set -euo pipefail
+        if [[ -z "${REPO_KEY_ARMORED_B64//[[:space:]]/}" ]]; then
+          echo "::error::Input 'repo-key-armored-b64' is empty. No key material was provided."
+          echo "::error::Expected repo secret '${SECRET_NAME}' to contain a base64 armored secret signing key."
+          echo "::notice::Set secret: gh secret set ${SECRET_NAME} --repo ${GITHUB_REPOSITORY} < <repo>-secret-subkeys.b64"
+          echo "::notice::If you still use '${LEGACY_SECRET_NAME}', rename it or pass it explicitly."
+          exit 1
+        fi
+
+        export GNUPGHOME="$(mktemp -d)"
+        chmod 700 "$GNUPGHOME"
+        trap 'find "$GNUPGHOME" -type f -exec shred -u {} + 2>/dev/null || true; rm -rf "$GNUPGHOME"' EXIT
+
+        if ! printf '%s' "$REPO_KEY_ARMORED_B64" | base64 -d \
+            > "$GNUPGHOME/signing-key.asc" 2>"$GNUPGHOME/decode.log"; then
+          echo "::error::Failed to decode repo-key-armored-b64 as base64."
+          sed 's/^/::error::base64: /' "$GNUPGHOME/decode.log"
+          echo "::notice::Re-export the secret payload and store it as ${SECRET_NAME}."
+          exit 1
+        fi
+        if ! gpg --batch --import "$GNUPGHOME/signing-key.asc" >/dev/null 2>"$GNUPGHOME/import.log"; then
+          echo "::error::Failed to import decoded key material into a temporary keyring."
+          sed 's/^/::error::gpg: /' "$GNUPGHOME/import.log"
+          echo "::notice::Ensure ${SECRET_NAME} contains a SECRET key export (not a public key)."
+          exit 1
+        fi
+
+        workdir=$(mktemp -d)
+        trap 'rm -rf "$workdir"' EXIT
+        script="$workdir/check-key-expiry.sh"
+        curl -fsSL --retry 3 -o "$script" \
+         "https://raw.githubusercontent.com/OpenCHAMI/gpg-signing-manager/d4366a45c94be50cbb7f90d229c10f395b6d10d8/scripts/check-key-expiry.sh"
+
+        bash "$script" \
+          --gnupghome "$GNUPGHOME" \
+          --threshold-days "$WARN_DAYS" \
+          --github-annotations
