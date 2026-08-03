@@ -1,0 +1,66 @@
+# Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+#
+# Reusable workflow: validates a signed quadlet RPM's installed file list
+# against the set of files the caller expects it to ship.
+
+name: Validate Podman Quadlet RPM
+run-name: Validate Podman Quadlet RPM for ${{ github.ref }}
+on:
+  workflow_call:
+    inputs:
+      artifact-name-signed-rpms:
+        description: 'Artifact-name for signed RPM artifacts'
+        default: 'rpms-signed'
+        type: string
+      expected-files:
+        description: 'a list of files the RPM is expected to install (newline delimited or multiline yaml string)'
+        required: true
+        type: string
+
+jobs:
+  rpmvalidate:
+    runs-on: ubuntu-latest
+    container:
+      image: rockylinux:9
+    steps:
+
+      - name: Install build dependencies
+        run: dnf install -y -q git rpmlint tar gzip diffutils
+
+      - name: Mark workspace as a safe git directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-tags: true
+          fetch-depth: 0
+
+      - name: Download signed RPM artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.artifact-name-signed-rpms }}
+          path: dist/rpms
+
+      - name: Find Quadlet RPM
+        run: |
+          set -euo pipefail
+
+          quadlet_rpm=$(find . -type f -iname "*.rpm" | head -n 1)
+          if [ -z "${quadlet_rpm}" ]; then
+            echo "could not locate quadlet rpm file"
+            exit 1
+          fi
+
+          echo "using QUADLET_RPM_PATH=${quadlet_rpm}"
+          echo "QUADLET_RPM_PATH=${quadlet_rpm}" >> "$GITHUB_ENV"
+
+      - name: Verify installed file list is exactly what's expected
+        shell: bash
+        env:
+          EXPECTED_FILES: ${{ inputs.expected-files }}
+        run: |
+          set -euo pipefail
+          rpm -qlp "${QUADLET_RPM_PATH}" | sort | grep -v '^$' > /tmp/actual-files.txt
+          printf '%s\n' "${EXPECTED_FILES}" | sort | grep -v '^$' > /tmp/expected-files.txt
+          diff /tmp/expected-files.txt /tmp/actual-files.txt
