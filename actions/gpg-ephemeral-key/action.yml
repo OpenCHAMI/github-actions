@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
 
-name: 'Generate and Sign Ephemeral GPG Key'
+name: '[DEPRECATED] Generate and Sign Ephemeral GPG Key'
 author: 'OpenCHAMI'
 branding:
   icon: 'lock'
   color: 'purple'
-description: 'Creates an ephemeral GPG key per build and signs it with a repo-scoped subkey'
+description: 'Deprecated: use gpg-configure-release-keys instead. Creates an ephemeral GPG key per build and signs it with a repo-scoped subkey'
 
 inputs:
   subkey-armored:
@@ -45,6 +45,11 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - id: deprecation-warning
+      shell: bash
+      run: |
+        echo "::warning::gpg-ephemeral-key is deprecated; migrate to gpg-configure-release-keys."
+
     - id: setup
       shell: bash
       run: |
