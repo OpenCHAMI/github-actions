@@ -9,10 +9,18 @@ Reusable GitHub Actions for CI/CD.
 
 ## Structure
 
-- `actions/gpg-ephemeral-key`: Ephemeral key generation for RPM/GPG signing
-- `actions/sign-rpm`: RPM signing with ephemeral keys
+- `actions/gpg-ephemeral-key`: **Deprecated** - use `actions/gpg-configure-release-keys` instead
+- `actions/gpg-configure-release-keys`: Generates and certifies a per-run ephemeral GPG key through the repo's release key chain
+- `actions/gpg-sign-rpm`: RPM signing with ephemeral keys
+- `actions/gpg-check-key-expiration`: Fails CI if a signing key is expired or expiring soon
+- `actions/gpg-verify-trust-chain`: Verifies the master/repo-cert/ephemeral trust chain and optionally checksigs RPMs
 - `.github/workflows/go-build-release.yml`: Reusable workflow for GoReleaser builds
 - `.github/workflows/docker-build-release.yml`: Reusable workflow for multi-arch container image builds
+- `.github/workflows/build-publish-container-goreleaser.yml`: Builds and publishes a container image via GoReleaser
+- `.github/workflows/build-rpm-quadlet.yml`: Builds a caller repo's podman quadlet RPM
+- `.github/workflows/gpg-sign-artifacts.yml`: Signs unsigned RPM artifacts with a per-run ephemeral key
+- `.github/workflows/validate-rpm-quadlet.yml`: Validates a signed quadlet RPM's installed file list
+- `.github/workflows/release-signed-artifacts.yml`: Publishes a GitHub Release with signed RPMs and public keys
 - `.github/workflows/lint-workflows.yml`: Reusable workflow that lints workflow files (actionlint + zizmor)
 - `.github/workflows/govulncheck.yml`: Reusable workflow that scans Go modules for known CVEs
 - `.github/workflows/dependency-review.yml`: Reusable workflow that gates PRs introducing CVE-flagged deps
@@ -24,8 +32,8 @@ Use major version tags for stability:
 
 ```yaml
 # For actions
-- uses: OpenCHAMI/github-actions/actions/gpg-ephemeral-key@v1
-- uses: OpenCHAMI/github-actions/actions/sign-rpm@v1
+- uses: OpenCHAMI/github-actions/actions/gpg-configure-release-keys@v1
+- uses: OpenCHAMI/github-actions/actions/gpg-sign-rpm@v1
 
 # For reusable workflows
 jobs:
@@ -33,9 +41,9 @@ jobs:
     uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v3.3
 ```
 
-Pin a commit SHA internally for maximum supply‑chain safety if desired.
+Pin a commit SHA internally for maximum supply-chain safety if desired.
 
-## Actions and Workflows Overview
+## Workflows
 
 ### go-build-release (Reusable Workflow)
 Standardized GoReleaser workflow for building and releasing Go applications with:
@@ -75,8 +83,8 @@ See the [workflow](.github/workflows/go-build-release.yml) for additional input 
 ### lint-workflows (Reusable Workflow)
 Lints the caller repo's GitHub Actions workflow files.
 
-- **actionlint** — syntax validation, shellcheck on `run:` steps, deprecated-action checks.
-- **zizmor** — security-focused static analysis (script injection, excessive permissions, unpinned third-party actions). Uploads SARIF findings to the caller's GitHub Advanced Security tab.
+- **actionlint** - syntax validation, shellcheck on `run:` steps, deprecated-action checks.
+- **zizmor** - security-focused static analysis (script injection, excessive permissions, unpinned third-party actions). Uploads SARIF findings to the caller's GitHub Advanced Security tab.
 
 **Usage:**
 ```yaml
@@ -145,68 +153,176 @@ jobs:
       image-ref: ghcr.io/openchami/foo:${{ github.sha }}
 ```
 
-### gpg-ephemeral-key
-Generates a short‑lived RSA key (default 3072‑bit, 1 day) using an isolated `GNUPGHOME`, signs it with a repo‑scoped subkey you provide, and outputs:
-- `ephemeral-fingerprint`
-- `ephemeral-public-key` (base64 of armored)
-- `gnupg-home` (path for downstream steps)
+### build-publish-container-goreleaser (Reusable Workflow)
+Builds and publishes a container image via GoReleaser, with multi-arch builds, build provenance attestation, and PR snapshot support.
 
-### sign-rpm
-Signs an RPM using a provided GPG fingerprint (works with the ephemeral key output) and exposes signature verification output.
+**Usage:**
+```yaml
+jobs:
+  build:
+    uses: OpenCHAMI/github-actions/.github/workflows/build-publish-container-goreleaser.yml@v3.5
+    with:
+      registry_subject_name: ghcr.io/openchami/foo
+```
+
+### build-rpm-quadlet (Reusable Workflow)
+Builds the caller repo's podman quadlet RPM and uploads it as an unsigned artifact for downstream signing.
+
+**Usage:**
+```yaml
+jobs:
+  build:
+    uses: OpenCHAMI/github-actions/.github/workflows/build-rpm-quadlet.yml@v3.5
+```
+
+### gpg-sign-artifacts (Reusable Workflow)
+Signs unsigned RPM artifacts with a per-run ephemeral key certified through the repo's release key chain, verifies the chain, and uploads the signed RPMs and public keys. Intended as the common entry point for signing all release artifact types (RPMs today; other formats later).
+
+**Usage:**
+```yaml
+jobs:
+  sign:
+    uses: OpenCHAMI/github-actions/.github/workflows/gpg-sign-artifacts.yml@v3.5
+    secrets: inherit
+```
+
+### validate-rpm-quadlet (Reusable Workflow)
+Validates a signed quadlet RPM's installed file list against the set of files the caller expects it to ship.
+
+**Usage:**
+```yaml
+jobs:
+  validate:
+    uses: OpenCHAMI/github-actions/.github/workflows/validate-rpm-quadlet.yml@v3.5
+    with:
+      expected-files: |
+        /etc/containers/systemd/foo.container
+```
+
+### release-signed-artifacts (Reusable Workflow)
+Publishes a GitHub Release for a tag, attaching signed RPMs and public keys, with trust-chain verification instructions in the release body.
+
+**Usage:**
+```yaml
+jobs:
+  release:
+    uses: OpenCHAMI/github-actions/.github/workflows/release-signed-artifacts.yml@v3.5
+```
+
+## Actions
+
+### gpg-ephemeral-key (Deprecated - use gpg-configure-release-keys)
+Generates a short-lived RSA key and signs it with a repo-scoped subkey. See the [action README](actions/gpg-ephemeral-key/README.md).
+
+### gpg-configure-release-keys
+Generates a per-run ephemeral GPG key, certified through the repo's release key chain (master certifies a repo cert key, which certifies the ephemeral key). See the [action README](actions/gpg-configure-release-keys/README.md).
+
+### gpg-sign-rpm
+Signs an RPM using a provided GPG fingerprint (works with the ephemeral key output from `gpg-configure-release-keys`) and exposes signature verification output. See the [action README](actions/gpg-sign-rpm/README.md).
+
+### gpg-check-key-expiration
+Fails CI if the provided signing key is expired or expiring within a threshold. See the [action README](actions/gpg-check-key-expiration/README.md).
+
+### gpg-verify-trust-chain
+Verifies the master/repo-cert/ephemeral trust chain and optionally checksigs RPMs. See the [action README](actions/gpg-verify-trust-chain/README.md).
 
 ## Security Model
 
-Trust chain: `Ephemeral Key ← Repo Subkey ← Offline Master Key`.
+Trust chain: `Ephemeral Key <- Repo Cert Key <- Offline Master Key`.
 
 Design principles:
 - Ephemeral keys reduce exposure window.
-- Repo subkeys are easily revocable & rotated.
+- Repo cert keys are easily revocable & rotated.
 - Isolated `GNUPGHOME` avoids polluting runner defaults.
-- Optional cleanup to remove secrets post‑sign.
+- GNUPGHOME cleanup is the calling workflow's responsibility, not optional.
 
 Key expiration limits future signing only; existing signatures remain valid if the trust chain remains intact.
 
 ## Example Workflow (Combined)
 
+Adapted from metadata-service's PR build workflow, chaining container build, RPM build, signing, and validation:
+
 ```yaml
+name: Build each PR for testing and validation
+on:
+    pull_request:
+        branches:
+            - main
+        types: [opened, synchronize, reopened, edited]
+    workflow_dispatch:
+      inputs:
+        pr_number:
+          description: 'PR Number to build (optional, for manual PR builds)'
+          required: false
+          type: string
+
+permissions: write-all # Necessary for the generate-build-provenance action with containers
 jobs:
-  build-and-sign:
+
+  config:
     runs-on: ubuntu-latest
+    outputs:
+      rpm-unsigned: ${{ steps.names.outputs.rpm-unsigned }}
+      rpm-signed:   ${{ steps.names.outputs.rpm-signed }}
+      keys-public:  ${{ steps.names.outputs.keys-public }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Generate ephemeral key
-        id: gpg
-        uses: OpenCHAMI/github-actions/actions/gpg-ephemeral-key@v1
-        with:
-          subkey-armored: ${{ secrets.GPG_SUBKEY_B64 }}
-          comment: build:${{ github.run_id }}
-          cleanup: false # keep for subsequent signing
-      - name: Build RPM
-        run: ./scripts/build-rpm.sh
-      - name: Sign RPM
-        id: sign
-        uses: OpenCHAMI/github-actions/actions/sign-rpm@v1
-        with:
-          rpm-path: dist/my.rpm
-          gpg-fingerprint: ${{ steps.gpg.outputs.ephemeral-fingerprint }}
-          gnupg-home: ${{ steps.gpg.outputs.gnupg-home }}
-      - name: (Optional) Cleanup GNUPGHOME
-        if: always()
-        run: rm -rf "${{ steps.gpg.outputs.gnupg-home }}"
+      - id: names
+        run: |
+          {
+            echo "rpm-unsigned=rpms-unsigned"
+            echo "rpm-signed=rpms-signed"
+            echo "keys-public=public-keys"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    uses: OpenCHAMI/github-actions/.github/workflows/build-publish-container-goreleaser.yml@v3.5
+    secrets: inherit
+    with:
+      cgo_enabled: 0
+      registry_subject_name: ghcr.io/openchami/metadata-service
+      is_pr_build: true
+      pr_number: ${{ inputs.pr_number || github.event.pull_request.number || 0 }}
+
+  rpmbuild:
+    needs: [config, build]
+    uses: OpenCHAMI/github-actions/.github/workflows/build-rpm-quadlet.yml@v3.5
+    secrets: inherit
+    with:
+      artifact-name-unsigned-rpms: ${{ needs.config.outputs.rpm-unsigned }}
+
+  rpmsign:
+    needs: [config, rpmbuild]
+    uses: OpenCHAMI/github-actions/.github/workflows/gpg-sign-artifacts.yml@v3.5
+    secrets: inherit
+    with:
+      artifact-name-unsigned-rpms: ${{ needs.config.outputs.rpm-unsigned }}
+      artifact-name-signed-rpms:   ${{ needs.config.outputs.rpm-signed }}
+      artifact-name-public-keys:   ${{ needs.config.outputs.keys-public }}
+
+  rpmvalidate:
+    needs: [config, rpmsign]
+    uses: OpenCHAMI/github-actions/.github/workflows/validate-rpm-quadlet.yml@v3.5
+    secrets: inherit
+    with:
+      artifact-name-signed-rpms:   ${{ needs.config.outputs.rpm-signed }}
+      expected-files: |
+        /usr/share/containers/systemd/metadata-data.volume
+        /usr/share/containers/systemd/metadata-service.container
+        /usr/share/licenses/metadata-service
+        /usr/share/licenses/metadata-service/MIT.txt
 ```
 
 ## Continuous Integration
 
-A future CI workflow will:
-- Lint action metadata (actionlint)
-- Perform a matrix test invoking each action
-- Validate RPM signing round‑trip
+- Workflow files are linted via `lint-workflows.yml` (actionlint + zizmor).
+- RPM/quadlet output is validated via `validate-rpm-quadlet.yml`.
+- TODO: matrix test invoking each action directly.
 
 ## Rotation & Revocation
 
-1. Revoke and replace repo subkeys periodically.
-2. Update `GPG_SUBKEY_B64` secret.
-3. Tag a new release if behavior changes.
+Repo cert key and master key rotation/revocation procedures live in
+[gpg-signing-manager](https://github.com/OpenCHAMI/gpg-signing-manager). Tag
+a new release here if this repo's actions or workflows change as a result.
 
 ## Contributing
 
