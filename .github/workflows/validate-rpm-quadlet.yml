@@ -13,20 +13,37 @@ on:
         description: 'Artifact-name for signed RPM artifacts'
         default: 'rpms-signed'
         type: string
-      expected-files:
-        description: 'a list of files the RPM is expected to install (newline delimited or multiline yaml string)'
+      rpms:
+        description: 'YAML list of RPM specs, each with a `name` glob pattern (e.g. `foo-*.rpm`) and a `files` list'
         required: true
         type: string
 
 jobs:
-  rpmvalidate:
+  parse:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.parse.outputs.matrix }}
+    steps:
+      - name: Parse RPM specs
+        id: parse
+        env:
+          RPMS: ${{ inputs.rpms }}
+        run: echo "matrix=$(yq -o=json -I=0 '.' <<< "$RPMS")" >> "$GITHUB_OUTPUT"
+
+  rpmvalidate:
+    needs: parse
+    name: validate (${{ matrix.rpm.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rpm: ${{ fromJSON(needs.parse.outputs.matrix) }}
     container:
       image: rockylinux:9
     steps:
 
       - name: Install build dependencies
-        run: dnf install -y -q git rpmlint tar gzip diffutils
+        run: dnf install -y -q git rpmlint tar gzip diffutils jq
 
       - name: Mark workspace as a safe git directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -43,10 +60,14 @@ jobs:
           path: dist/rpms
 
       - name: Find Quadlet RPM
+        env:
+          RPM_NAME: ${{ matrix.rpm.name }}
         run: |
           set -euo pipefail
 
-          quadlet_rpm=$(find . -type f -iname "*.rpm" | head -n 1)
+          # RPM_NAME is a glob (built filenames carry version/release/arch);
+          # sort makes the pick deterministic if it matches more than one file.
+          quadlet_rpm=$(find . -type f -iname "${RPM_NAME}" | sort | head -n 1)
           if [ -z "${quadlet_rpm}" ]; then
             echo "could not locate quadlet rpm file"
             exit 1
@@ -58,9 +79,9 @@ jobs:
       - name: Verify installed file list is exactly what's expected
         shell: bash
         env:
-          EXPECTED_FILES: ${{ inputs.expected-files }}
+          FILES: ${{ toJSON(matrix.rpm.files) }}
         run: |
           set -euo pipefail
           rpm -qlp "${QUADLET_RPM_PATH}" | sort | grep -v '^$' > /tmp/actual-files.txt
-          printf '%s\n' "${EXPECTED_FILES}" | sort | grep -v '^$' > /tmp/expected-files.txt
+          jq -r '.[]' <<< "$FILES" | sort | grep -v '^$' > /tmp/expected-files.txt
           diff /tmp/expected-files.txt /tmp/actual-files.txt

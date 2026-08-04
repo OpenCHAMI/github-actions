@@ -195,8 +195,10 @@ jobs:
   validate:
     uses: OpenCHAMI/github-actions/.github/workflows/validate-rpm-quadlet.yml@v3.5
     with:
-      expected-files: |
-        /etc/containers/systemd/foo.container
+      rpms: |
+        - name: foo-*.rpm
+          files:
+            - /etc/containers/systemd/foo.container
 ```
 
 ### release-signed-artifacts (Reusable Workflow)
@@ -305,11 +307,13 @@ jobs:
     secrets: inherit
     with:
       artifact-name-signed-rpms:   ${{ needs.config.outputs.rpm-signed }}
-      expected-files: |
-        /usr/share/containers/systemd/metadata-data.volume
-        /usr/share/containers/systemd/metadata-service.container
-        /usr/share/licenses/metadata-service
-        /usr/share/licenses/metadata-service/MIT.txt
+      rpms: |
+        - name: metadata-service-*.rpm
+          files:
+            - /usr/share/containers/systemd/metadata-data.volume
+            - /usr/share/containers/systemd/metadata-service.container
+            - /usr/share/licenses/metadata-service
+            - /usr/share/licenses/metadata-service/MIT.txt
 ```
 
 ## Continuous Integration
