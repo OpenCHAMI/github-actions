@@ -46,14 +46,14 @@ jobs:
           fetch-depth: 0
 
       - name: Check for repo key expiry
-        uses: OpenCHAMI/github-actions/actions/gpg-check-key-expiration@v3.5
+        uses: OpenCHAMI/github-actions/actions/gpg-check-key-expiration@dev-rpm-quadlets
         with:
           repo-key-armored-b64: ${{ secrets.GPG_REPO_KEY_B64 }}
           warn-days: '30'
 
       - name: Configure GPG release keys
         id: gpg
-        uses: OpenCHAMI/github-actions/actions/gpg-configure-release-keys@v3.5
+        uses: OpenCHAMI/github-actions/actions/gpg-configure-release-keys@dev-rpm-quadlets
         with:
           repo-cert-key-armored-b64: ${{ secrets.GPG_REPO_CERT_KEY_B64 }}
           master-public-key-asc: ${{ secrets.MASTER_PUBLIC_ASC }}
@@ -71,14 +71,14 @@ jobs:
 
       - name: Sign rpms
         id: rpmsign
-        uses: OpenCHAMI/github-actions/actions/gpg-sign-rpm@v3.5
+        uses: OpenCHAMI/github-actions/actions/gpg-sign-rpm@dev-rpm-quadlets
         with:
           resign: true
           gnupg-home: ${{ steps.gpg.outputs.gnupg-home }}
           gpg-fingerprint: ${{ steps.gpg.outputs.ephemeral-fingerprint }}
 
       - name: Verify trust chain
-        uses: OpenCHAMI/github-actions/actions/gpg-verify-trust-chain@v3.5
+        uses: OpenCHAMI/github-actions/actions/gpg-verify-trust-chain@dev-rpm-quadlets
         with:
           master-public-key: ${{ secrets.MASTER_PUBLIC_ASC }}
           require-master: true
