@@ -81,7 +81,7 @@ jobs:
         uses: OpenCHAMI/github-actions/actions/gpg-verify-trust-chain@v3.5
         with:
           master-public-key: ${{ secrets.MASTER_PUBLIC_ASC }}
-          require-master: false
+          require-master: true
           repo-public-key-file: ${{ steps.gpg.outputs.repo-cert-public-key-file }}
           ephemeral-public-key-file: ${{ steps.gpg.outputs.ephemeral-public-key-file }}
           rpm-dir: .
