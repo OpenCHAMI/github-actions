@@ -1,0 +1,87 @@
+# Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+#
+# Reusable workflow: validates a signed quadlet RPM's installed file list
+# against the set of files the caller expects it to ship.
+
+name: Validate Podman Quadlet RPM
+run-name: Validate Podman Quadlet RPM for ${{ github.ref }}
+on:
+  workflow_call:
+    inputs:
+      artifact-name-signed-rpms:
+        description: 'Artifact-name for signed RPM artifacts'
+        default: 'rpms-signed'
+        type: string
+      rpms:
+        description: 'YAML list of RPM specs, each with a `name` glob pattern (e.g. `foo-*.rpm`) and a `files` list'
+        required: true
+        type: string
+
+jobs:
+  parse:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.parse.outputs.matrix }}
+    steps:
+      - name: Parse RPM specs
+        id: parse
+        env:
+          RPMS: ${{ inputs.rpms }}
+        run: echo "matrix=$(yq -o=json -I=0 '.' <<< "$RPMS")" >> "$GITHUB_OUTPUT"
+
+  rpmvalidate:
+    needs: parse
+    name: validate (${{ matrix.rpm.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rpm: ${{ fromJSON(needs.parse.outputs.matrix) }}
+    container:
+      image: rockylinux:9
+    steps:
+
+      - name: Install build dependencies
+        run: dnf install -y -q git rpmlint tar gzip diffutils jq
+
+      - name: Mark workspace as a safe git directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-tags: true
+          fetch-depth: 0
+
+      - name: Download signed RPM artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.artifact-name-signed-rpms }}
+          path: dist/rpms
+
+      - name: Find Quadlet RPM
+        env:
+          RPM_NAME: ${{ matrix.rpm.name }}
+        run: |
+          set -euo pipefail
+
+          # RPM_NAME is a glob (built filenames carry version/release/arch);
+          # sort makes the pick deterministic if it matches more than one file.
+          quadlet_rpm=$(find . -type f -iname "${RPM_NAME}" | sort | head -n 1)
+          if [ -z "${quadlet_rpm}" ]; then
+            echo "could not locate quadlet rpm file"
+            exit 1
+          fi
+
+          echo "using QUADLET_RPM_PATH=${quadlet_rpm}"
+          echo "QUADLET_RPM_PATH=${quadlet_rpm}" >> "$GITHUB_ENV"
+
+      - name: Verify installed file list is exactly what's expected
+        shell: bash
+        env:
+          FILES: ${{ toJSON(matrix.rpm.files) }}
+        run: |
+          set -euo pipefail
+          rpm -qlp "${QUADLET_RPM_PATH}" | sort | grep -v '^$' > /tmp/actual-files.txt
+          jq -r '.[]' <<< "$FILES" | sort | grep -v '^$' > /tmp/expected-files.txt
+          diff /tmp/expected-files.txt /tmp/actual-files.txt

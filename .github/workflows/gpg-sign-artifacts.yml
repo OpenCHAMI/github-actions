@@ -1,0 +1,114 @@
+# Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+#
+# Reusable workflow: intended as the common entry point for signing all
+# release artifact types (RPMs today; other formats later) with a per-run
+# ephemeral key certified through the repo's release key chain.
+#
+# Keep this file up to date and maintained as we add other package signing
+# tasks (e.g. .deb, Arch packages).
+
+name: GPG Sign artifacts
+run-name: Create signed artifacts for ${{ github.ref }}
+on:
+  workflow_call:
+    inputs:
+      artifact-name-unsigned-rpms:
+        description: 'Artifact-name for unsigned RPM artifacts'
+        default: 'rpms-unsigned'
+        type: string
+      artifact-name-signed-rpms:
+        description: 'Name for the signed RPM composite artifact'
+        type: string
+        default: 'rpms-signed'
+      artifact-name-public-keys:
+        description: 'Name for the public key composite artifact'
+        type: string
+        default: 'public-keys'
+jobs:
+  artifacts-sign:
+    runs-on: ubuntu-latest
+    container:
+      image: rockylinux:9
+    steps:
+
+      - name: Install build dependencies
+        run: |
+          dnf install -y -q git make rpm-build rpmlint tar gzip
+
+      - name: Mark workspace as a safe git directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-tags: true
+          fetch-depth: 0
+
+      - name: Check for repo key expiry
+        uses: OpenCHAMI/github-actions/actions/gpg-check-key-expiration@v3.5
+        with:
+          repo-key-armored-b64: ${{ secrets.GPG_REPO_KEY_B64 }}
+          warn-days: '30'
+
+      - name: Configure GPG release keys
+        id: gpg
+        uses: OpenCHAMI/github-actions/actions/gpg-configure-release-keys@v3.5
+        with:
+          repo-cert-key-armored-b64: ${{ secrets.GPG_REPO_CERT_KEY_B64 }}
+          master-public-key-asc: ${{ secrets.MASTER_PUBLIC_ASC }}
+          master-fpr: ${{ secrets.MASTER_FPR }}
+          name: '${{ github.repository }} Release'
+          comment: 'ephemeral key for ${{ github.ref_name }}'
+          email: 'release@packages.openchami.org'
+          expire-days: '1'
+
+      - name: Download RPM artifacts requested for release
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.artifact-name-unsigned-rpms }}
+          path: dist
+
+      - name: Sign rpms
+        id: rpmsign
+        uses: OpenCHAMI/github-actions/actions/gpg-sign-rpm@v3.5
+        with:
+          resign: true
+          gnupg-home: ${{ steps.gpg.outputs.gnupg-home }}
+          gpg-fingerprint: ${{ steps.gpg.outputs.ephemeral-fingerprint }}
+
+      - name: Verify trust chain
+        uses: OpenCHAMI/github-actions/actions/gpg-verify-trust-chain@v3.5
+        with:
+          master-public-key: ${{ secrets.MASTER_PUBLIC_ASC }}
+          require-master: true
+          repo-public-key-file: ${{ steps.gpg.outputs.repo-cert-public-key-file }}
+          ephemeral-public-key-file: ${{ steps.gpg.outputs.ephemeral-public-key-file }}
+          rpm-dir: .
+
+      - name: rpmlint
+        run: rpmlint "$(find . -name '*.rpm')" || true
+
+      - name: Upload signed RPMs
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name-signed-rpms }}
+          path: '**/*.rpm'
+          overwrite: true
+
+      - name: Upload public signing keys
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name-public-keys }}
+          path: '**/*.pub.asc'
+          overwrite: true
+
+      - name: Cleanup GNUPGHOME
+        if: always()
+        env:
+          GNUPGHOME_PATH: ${{ steps.gpg.outputs.gnupg-home }}
+        run: |
+          set -euo pipefail
+          [ -n "$GNUPGHOME_PATH" ] && [ -d "$GNUPGHOME_PATH" ] || exit 0
+          find "$GNUPGHOME_PATH" -type f -exec shred -u {} + 2>/dev/null || true
+          rm -rf "$GNUPGHOME_PATH"

@@ -1,0 +1,95 @@
+# Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+#
+# Reusable workflow: publishes a GitHub Release for a tag, attaching signed
+# RPMs and public keys, with trust-chain verification instructions in the
+# release body.
+name: Release signed artifacts
+run-name: Generate release with signed artifacts for ${{ github.ref }}
+permissions:
+  contents: write
+on:
+  workflow_call:
+    inputs:
+      artifact-name-signed-rpms:
+        description: 'Name for the signed RPM composite artifact'
+        type: string
+        default: 'rpms-signed'
+        required: false
+      artifact-name-public-keys:
+        description: 'Name for the public key composite artifact'
+        type: string
+        default: 'public-keys'
+        required: false
+jobs:
+  artifacts-release:
+    runs-on: ubuntu-latest
+    container:
+      image: rockylinux:9
+    steps:
+      - name: Install dependencies
+        run: |
+          dnf install -y -q git tar gzip zip
+      - name: Mark workspace as a safe git directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-tags: true
+          fetch-depth: 0
+      - name: Download signed RPM artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.artifact-name-signed-rpms }}
+          path: dist/rpms
+      - name: Download public key artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.artifact-name-public-keys }}
+          path: dist/keys
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3.0.2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          fail_on_unmatched_files: true
+          files: |
+            dist/rpms/**/*.rpm
+            dist/keys/**/*.asc
+          body: |-
+            ## GPG Signature Verification
+
+            Each RPM in this release is signed with a short-lived ephemeral key that
+            is certified by the repository signing key, which is itself certified by
+            the OpenCHAMI offline master key.
+
+            ### Trust chain
+
+            ```
+            offline master key
+                └─[certifies]─> repo key
+                                    └─[certifies]─> ephemeral key (${{ github.ref_name }})
+                                                        └─[signs]─> RPM files
+            ```
+
+            ### How to verify
+
+            1. Download `repo-cert.pub.asc` and `ephemeral.pub.asc` from this release.
+            2. Import both keys:
+               ```bash
+               gpg --import repo-public.asc ephemeral-public.asc
+               ```
+            3. Verify each RPM:
+               ```bash
+               rpm --checksig *.rpm
+               ```
+            4. For full chain verification (requires the master public key):
+               ```bash
+               curl -LO \
+                 https://raw.githubusercontent.com/OpenCHAMI/gpg-signing-manager/main/scripts/verify-chain.sh
+               bash verify-chain.sh \
+                 --master    master.pub.asc \
+                 --repo      repo-cert.pub.asc \
+                 --ephemeral ephemeral.pub.asc \
+                 --rpm       *.rpm
+               ```

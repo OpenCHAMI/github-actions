@@ -9,9 +9,6 @@ branding:
 description: 'Signs an RPM using the provided GPG key fingerprint (expects GNUPGHOME from previous step)'
 
 inputs:
-  rpm-path:
-    description: 'Path to the RPM file to sign'
-    required: true
   gpg-fingerprint:
     description: 'Fingerprint of the GPG key to use for signing'
     required: true
@@ -38,23 +35,22 @@ runs:
           apt-get update -y
           apt-get install -y --no-install-recommends rpm gnupg
         elif command -v dnf >/dev/null 2>&1; then
-          dnf install -y rpm-build gnupg
+          dnf install -y rpm-build rpm-sign gnupg
         fi
-
-
 
     - name: Configure RPM to use GPG key
       shell: bash
       env:
         GNUPGHOME: ${{ inputs['gnupg-home'] }}
+        GPG_FINGERPRINT: ${{ inputs['gpg-fingerprint'] }}
       run: |
         set -euo pipefail
         GPG_BIN="$(command -v gpg || command -v gpg2)"
         {
           echo "%_signature gpg"
-          echo "%_gpg_name ${{ inputs['gpg-fingerprint'] }}"
+          echo "%_gpg_name $GPG_FINGERPRINT"
           echo "%__gpg $GPG_BIN"
-          echo "%_gpg_digest_algo sha256"   # <—
+          echo "%_gpg_digest_algo sha256"
         } >> "$HOME/.rpmmacros"
         echo "Using gpg at: $GPG_BIN"
         rpm --eval "%{__gpg}" || true
@@ -63,35 +59,46 @@ runs:
       shell: bash
       env:
         GNUPGHOME: ${{ inputs['gnupg-home'] }}
+        GPG_FINGERPRINT: ${{ inputs['gpg-fingerprint'] }}
+        RESIGN: ${{ inputs.resign }}
       run: |
         set -euo pipefail
         echo "GNUPGHOME=$GNUPGHOME"
         gpg --list-secret-keys || { echo "No secret keys in GNUPGHOME"; exit 1; }
 
-        # If already signed and resign=false, skip
-        if rpm --checksig "${{ inputs['rpm-path'] }}" 2>/dev/null | grep -qi 'pgp signature'; then
-          if [ "${{ inputs.resign }}" = "true" ]; then
-            rpm --delsign "${{ inputs['rpm-path'] }}" || true
-          else
-            echo "Already signed; skipping (set resign=true to force)."
-            exit 0
+        found=0
+        while IFS= read -r f; do
+          found=1
+          if rpm --checksig "$f" 2>/dev/null | grep -qi 'pgp signature'; then
+            if [ "$RESIGN" = "true" ]; then
+              rpm --delsign "$f" || true
+            else
+              echo "Already signed; skipping $f (set resign=true to force)."
+              continue
+            fi
           fi
+          # Use rpmsign (more reliable) with explicit defines
+          rpmsign --addsign \
+            --define "_signature gpg" \
+            --define "_gpg_name $GPG_FINGERPRINT" \
+            --define "__gpg $(command -v gpg)" \
+            --define "_gpg_digest_algo sha256" \
+            "$f"
+        done < <(find . -type f -name '*.rpm')
+        if [ "$found" -eq 0 ]; then
+          echo "::error::no RPMs found under $(pwd)"; exit 1
         fi
-
-        # Use rpmsign (more reliable) with explicit defines
-        rpmsign --addsign \
-          --define "_signature gpg" \
-          --define "_gpg_name ${{ inputs['gpg-fingerprint'] }}" \
-          --define "__gpg $(command -v gpg)" \
-          --define "_gpg_digest_algo sha256" \
-          "${{ inputs['rpm-path'] }}"
 
     - name: Import Signer Public Key for Verification
       shell: bash
+      env:
+        GNUPGHOME: ${{ inputs['gnupg-home'] }}
+        GPG_FINGERPRINT: ${{ inputs['gpg-fingerprint'] }}
       run: |
         set -euo pipefail
-        gpg --armor --export "${{ inputs.gpg-fingerprint }}" > signer.pub
-        rpm --import signer.pub 2>/dev/null || sudo rpm --import signer.pub 2>/dev/null || true
+        gpg --armor --export "$GPG_FINGERPRINT" > signer.pub
+        test -s signer.pub || { echo "Export produced no key for $GPG_FINGERPRINT"; exit 1; }
+        rpm --import signer.pub || sudo rpm --import signer.pub
         rm -f signer.pub
 
     - name: Verify RPM signature
@@ -99,6 +106,19 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        out=$(rpm --checksig "${{ inputs.rpm-path }}")
+
+        RPMS=()
+        while IFS= read -r f; do
+          RPMS+=("$f")
+        done < <(find . -type f -name '*.rpm')
+        if [ "${#RPMS[@]}" -eq 0 ]; then
+          echo "::error::no RPMs found under $(pwd)"; exit 1
+        fi
+
+        out=$(rpm --checksig "${RPMS[@]}")
         echo "$out"
-        echo "result=$out" >> "$GITHUB_OUTPUT"
+        {
+          echo "result<<EOF"
+          echo "$out"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
