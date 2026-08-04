@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
 name: 'Verify gpg trust chain'
 description: >-
   Verifies the release GPG trust chain (master certifies repo key, repo key certifies ephemeral key) and optionally checks RPM signatures. Standalone: installs its own dependencies and runs verify-chain.sh, fetched at runtime from a pinned commit in gpg-signing-manager.
