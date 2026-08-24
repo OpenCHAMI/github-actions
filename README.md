@@ -14,6 +14,7 @@ Reusable GitHub Actions for CI/CD.
 - `actions/gpg-sign-rpm`: RPM signing with ephemeral keys
 - `actions/gpg-check-key-expiration`: Fails CI if a signing key is expired or expiring soon
 - `actions/gpg-verify-trust-chain`: Verifies the master/repo-cert/ephemeral trust chain and optionally checksigs RPMs
+- `actions/publish-rpm-repository`: Generates durable-key-signed repository metadata and safely publishes RPM repositories to S3
 - `.github/workflows/go-build-release.yml`: Reusable workflow for GoReleaser builds
 - `.github/workflows/docker-build-release.yml`: Reusable workflow for multi-arch container image builds
 - `.github/workflows/build-publish-container-goreleaser.yml`: Builds and publishes a container image via GoReleaser
@@ -21,6 +22,7 @@ Reusable GitHub Actions for CI/CD.
 - `.github/workflows/gpg-sign-artifacts.yml`: Signs unsigned RPM artifacts with a per-run ephemeral key
 - `.github/workflows/validate-rpm-quadlet.yml`: Validates a signed quadlet RPM's installed file list
 - `.github/workflows/release-signed-artifacts.yml`: Publishes a GitHub Release with signed RPMs and public keys
+- `.github/workflows/publish-rpm-repository.yml`: Publishes aggregated RPMs through S3 and CloudFront using GitHub OIDC
 - `.github/workflows/lint-workflows.yml`: Reusable workflow that lints workflow files (actionlint + zizmor)
 - `.github/workflows/govulncheck.yml`: Reusable workflow that scans Go modules for known CVEs
 - `.github/workflows/dependency-review.yml`: Reusable workflow that gates PRs introducing CVE-flagged deps
@@ -211,6 +213,36 @@ jobs:
     uses: OpenCHAMI/github-actions/.github/workflows/release-signed-artifacts.yml@v3.5
 ```
 
+### publish-rpm-repository (Reusable Workflow)
+
+Aggregates signed RPM artifacts into a DNF/YUM repository, signs `repomd.xml`
+with a durable repository metadata key, publishes to S3 using GitHub OIDC, and
+invalidates only mutable CloudFront metadata paths. The calling repository's
+`rpm-publish` GitHub Environment supplies the durable signing-key secrets and
+can enforce required reviewers.
+
+```yaml
+jobs:
+  publish:
+    uses: OpenCHAMI/github-actions/.github/workflows/publish-rpm-repository.yml@v3.6
+    with:
+      repository-path: stable/el9/x86_64
+      s3-bucket: ${{ vars.RPM_REPOSITORY_BUCKET }}
+      aws-region: us-east-1
+      aws-role-arn: ${{ vars.RPM_REPOSITORY_PUBLISHER_ROLE_ARN }}
+      aws-account-id: ${{ vars.AWS_ACCOUNT_ID }}
+      cloudfront-distribution-id: ${{ vars.RPM_REPOSITORY_DISTRIBUTION_ID }}
+      public-base-url: https://rpm.openchami.org
+      package-master-fingerprint: ${{ vars.MASTER_FPR }}
+      metadata-signing-key-fingerprint: ${{ vars.RPM_REPOSITORY_SIGNING_KEY_FINGERPRINT }}
+```
+
+The service repositories continue signing RPM packages with certified ephemeral
+keys. Publication verifies those chains and emits a rotating DNF package-key
+bundle. Only repository metadata uses the durable key. See the
+[action documentation](actions/publish-rpm-repository/README.md) for publication
+ordering, key handling, and client trust requirements.
+
 ## Actions
 
 ### gpg-ephemeral-key (Deprecated - use gpg-configure-release-keys)
@@ -227,6 +259,12 @@ Fails CI if the provided signing key is expired or expiring within a threshold. 
 
 ### gpg-verify-trust-chain
 Verifies the master/repo-cert/ephemeral trust chain and optionally checksigs RPMs. See the [action README](actions/gpg-verify-trust-chain/README.md).
+
+### publish-rpm-repository
+
+Builds repository metadata from signed RPMs, signs `repomd.xml` with the durable
+repository metadata key, and publishes immutable packages before the metadata
+commit point. See the [action README](actions/publish-rpm-repository/README.md).
 
 ## Security Model
 

@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+paths:
+  .github/workflows/publish-rpm-repository.yml:
+    ignore:
+      - 'property "workflow_repository" is not defined in object type'
+      - 'property "workflow_sha" is not defined in object type'
