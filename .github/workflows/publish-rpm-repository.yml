@@ -1,0 +1,150 @@
+# SPDX-FileCopyrightText: 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: Publish RPM repository
+run-name: Publish RPM repository for ${{ github.ref }}
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name-signed-rpms:
+        description: 'Name of the signed RPM artifact to publish'
+        type: string
+        default: 'rpms-signed'
+        required: false
+      artifact-name-package-signing-keys:
+        description: 'Name of the certified ephemeral package public-key artifact'
+        type: string
+        default: 'public-keys'
+        required: false
+      repository-path:
+        description: 'Path below the bucket, for example stable/el9/x86_64'
+        type: string
+        required: true
+      s3-bucket:
+        description: 'Destination S3 bucket'
+        type: string
+        required: true
+      aws-region:
+        description: 'AWS region containing the destination bucket'
+        type: string
+        required: true
+      aws-role-arn:
+        description: 'GitHub OIDC publisher role ARN'
+        type: string
+        required: true
+      aws-account-id:
+        description: 'Expected AWS account ID for confused-deputy protection'
+        type: string
+        required: true
+      cloudfront-distribution-id:
+        description: 'CloudFront distribution to invalidate after publication'
+        type: string
+        required: false
+      public-base-url:
+        description: 'Public repository base URL, for example https://rpm.openchami.org'
+        type: string
+        required: false
+      metadata-signing-key-fingerprint:
+        description: 'Full fingerprint of the durable repository metadata signing key'
+        type: string
+        required: true
+      package-master-fingerprint:
+        description: 'Full fingerprint of the trusted package-signing master key'
+        type: string
+        required: true
+      repository-key-filename:
+        description: 'Published filename for the metadata signing public key'
+        type: string
+        default: 'RPM-GPG-KEY-OpenCHAMI'
+        required: false
+      deployment-environment:
+        description: 'GitHub Environment containing publication protections and key secrets'
+        type: string
+        default: 'rpm-publish'
+        required: false
+      dry-run:
+        description: 'Build and verify repository metadata without accessing AWS'
+        type: boolean
+        default: false
+        required: false
+    outputs:
+      repository-url:
+        description: 'Published repository URL'
+        value: ${{ jobs.publish.outputs.repository-url }}
+      package-count:
+        description: 'Number of packages in the generated repository'
+        value: ${{ jobs.publish.outputs.package-count }}
+      repomd-sha256:
+        description: 'SHA-256 digest of the committed repomd.xml'
+        value: ${{ jobs.publish.outputs.repomd-sha256 }}
+      invalidation-id:
+        description: 'CloudFront invalidation ID, when requested'
+        value: ${{ jobs.publish.outputs.invalidation-id }}
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: rpm-repository-${{ inputs.s3-bucket }}-${{ inputs.repository-path }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.deployment-environment }}
+    outputs:
+      repository-url: ${{ steps.publish.outputs.repository-url }}
+      package-count: ${{ steps.publish.outputs.package-count }}
+      repomd-sha256: ${{ steps.publish.outputs.repomd-sha256 }}
+      invalidation-id: ${{ steps.publish.outputs.invalidation-id }}
+    steps:
+      - name: Checkout publisher action at the reusable workflow commit
+        uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .openchami-actions
+          persist-credentials: false
+
+      - name: Download signed RPM artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ${{ inputs.artifact-name-signed-rpms }}
+          path: dist/rpms
+
+      - name: Download package signing keys
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ${{ inputs.artifact-name-package-signing-keys }}
+          path: dist/package-keys
+
+      - name: Configure AWS credentials
+        if: ${{ !inputs.dry-run }}
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          aws-region: ${{ inputs.aws-region }}
+          role-to-assume: ${{ inputs.aws-role-arn }}
+          role-session-name: OpenCHAMI-RPM-${{ github.run_id }}
+          allowed-account-ids: ${{ inputs.aws-account-id }}
+          unset-current-credentials: true
+
+      - name: Publish repository
+        id: publish
+        uses: ./.openchami-actions/actions/publish-rpm-repository
+        with:
+          rpm-path: dist/rpms
+          repository-path: ${{ inputs.repository-path }}
+          s3-bucket: ${{ inputs.s3-bucket }}
+          cloudfront-distribution-id: ${{ inputs.cloudfront-distribution-id }}
+          public-base-url: ${{ inputs.public-base-url }}
+          package-signing-keys-path: dist/package-keys
+          package-master-public-key-asc: ${{ secrets.MASTER_PUBLIC_ASC }}
+          package-master-fingerprint: ${{ inputs.package-master-fingerprint }}
+          authorized-package-repo-fingerprints: ${{ vars.PACKAGE_REPO_CERT_FINGERPRINTS }}
+          metadata-signing-key-armored-b64: ${{ secrets.RPM_REPOSITORY_SIGNING_KEY_B64 }}
+          metadata-signing-key-fingerprint: ${{ inputs.metadata-signing-key-fingerprint }}
+          metadata-signing-key-passphrase: ${{ secrets.RPM_REPOSITORY_SIGNING_KEY_PASSPHRASE }}
+          repository-key-filename: ${{ inputs.repository-key-filename }}
+          dry-run: ${{ inputs.dry-run }}

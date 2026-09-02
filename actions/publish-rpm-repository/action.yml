@@ -1,0 +1,139 @@
+# SPDX-FileCopyrightText: 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: 'Publish RPM repository'
+author: 'OpenCHAMI'
+description: 'Builds signed RPM repository metadata and publishes it to S3 in safe commit order'
+branding:
+  icon: 'upload-cloud'
+  color: 'orange'
+
+inputs:
+  rpm-path:
+    description: 'File or directory containing signed RPMs to publish'
+    required: true
+  repository-path:
+    description: 'Path below the bucket, for example stable/el9/x86_64'
+    required: true
+  s3-bucket:
+    description: 'Destination S3 bucket; required unless dry-run is true'
+    required: false
+  cloudfront-distribution-id:
+    description: 'CloudFront distribution to invalidate after publication'
+    required: false
+  public-base-url:
+    description: 'Public repository base URL, for example https://rpm.openchami.org'
+    required: false
+  package-signing-keys-path:
+    description: 'Directory containing repo-cert.pub.asc and ephemeral.pub.asc package-key pairs'
+    required: true
+  package-master-public-key-asc:
+    description: 'Trusted ASCII-armored master public key that certifies package repository keys'
+    required: true
+  package-master-fingerprint:
+    description: 'Full fingerprint of the trusted package-signing master key'
+    required: true
+  authorized-package-repo-fingerprints:
+    description: 'Comma, space, or newline-separated current repo-cert fingerprints allowed to certify new package keys'
+    required: true
+  package-key-bundle-filename:
+    description: 'Published filename containing authenticated ephemeral RPM public keys'
+    default: 'RPM-GPG-KEY-OpenCHAMI-Packages'
+    required: false
+  metadata-signing-key-armored-b64:
+    description: 'Base64-encoded ASCII-armored durable metadata signing secret key'
+    required: true
+  metadata-signing-key-fingerprint:
+    description: 'Full fingerprint of the durable metadata signing key'
+    required: true
+  metadata-signing-key-passphrase:
+    description: 'Passphrase for the metadata signing key, if protected'
+    required: false
+  repository-key-filename:
+    description: 'Published filename for the metadata signing public key'
+    default: 'RPM-GPG-KEY-OpenCHAMI'
+    required: false
+  require-signed-rpms:
+    description: 'Reject RPMs that do not contain a package signature'
+    default: 'true'
+    required: false
+  dry-run:
+    description: 'Build and verify locally without reading from or writing to AWS'
+    default: 'false'
+    required: false
+
+outputs:
+  repository-directory:
+    description: 'Local directory containing the complete generated repository'
+    value: ${{ steps.publish.outputs.repository-directory }}
+  repository-url:
+    description: 'Public URL when public-base-url is set, otherwise the S3 URL'
+    value: ${{ steps.publish.outputs.repository-url }}
+  package-count:
+    description: 'Number of RPMs represented by the generated repository'
+    value: ${{ steps.publish.outputs.package-count }}
+  repomd-sha256:
+    description: 'SHA-256 digest of the committed repomd.xml'
+    value: ${{ steps.publish.outputs.repomd-sha256 }}
+  invalidation-id:
+    description: 'CloudFront invalidation ID, when an invalidation was requested'
+    value: ${{ steps.publish.outputs.invalidation-id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install repository tooling
+      shell: bash
+      env:
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        set -euo pipefail
+        packages=(createrepo-c rpm gnupg)
+        if [[ "$DRY_RUN" != 'true' ]] && ! command -v aws >/dev/null 2>&1; then
+          packages+=(awscli)
+        fi
+
+        missing=false
+        for command in createrepo_c rpm gpg; do
+          command -v "$command" >/dev/null 2>&1 || missing=true
+        done
+        if [[ "$DRY_RUN" != 'true' ]]; then
+          command -v aws >/dev/null 2>&1 || missing=true
+        fi
+        [[ "$missing" == 'false' ]] && exit 0
+
+        sudo_cmd=()
+        command -v sudo >/dev/null 2>&1 && sudo_cmd=(sudo)
+        if command -v apt-get >/dev/null 2>&1; then
+          "${sudo_cmd[@]}" apt-get update -qq
+          "${sudo_cmd[@]}" apt-get install -y -qq --no-install-recommends "${packages[@]}"
+        elif command -v dnf >/dev/null 2>&1; then
+          dnf_packages=(createrepo_c rpm gnupg2)
+          [[ "$DRY_RUN" == 'true' ]] || dnf_packages+=(awscli2)
+          "${sudo_cmd[@]}" dnf install -y -q "${dnf_packages[@]}"
+        else
+          echo '::error::Unsupported runner: apt-get or dnf is required'
+          exit 1
+        fi
+
+    - name: Build, sign, and publish repository
+      id: publish
+      shell: bash
+      env:
+        INPUT_RPM_PATH: ${{ inputs.rpm-path }}
+        INPUT_REPOSITORY_PATH: ${{ inputs.repository-path }}
+        INPUT_S3_BUCKET: ${{ inputs.s3-bucket }}
+        INPUT_CLOUDFRONT_DISTRIBUTION_ID: ${{ inputs.cloudfront-distribution-id }}
+        INPUT_PUBLIC_BASE_URL: ${{ inputs.public-base-url }}
+        INPUT_PACKAGE_SIGNING_KEYS_PATH: ${{ inputs.package-signing-keys-path }}
+        INPUT_PACKAGE_MASTER_PUBLIC_KEY_ASC: ${{ inputs.package-master-public-key-asc }}
+        INPUT_PACKAGE_MASTER_FINGERPRINT: ${{ inputs.package-master-fingerprint }}
+        INPUT_AUTHORIZED_PACKAGE_REPO_FINGERPRINTS: ${{ inputs.authorized-package-repo-fingerprints }}
+        INPUT_PACKAGE_KEY_BUNDLE_FILENAME: ${{ inputs.package-key-bundle-filename }}
+        INPUT_METADATA_SIGNING_KEY_ARMORED_B64: ${{ inputs.metadata-signing-key-armored-b64 }}
+        INPUT_METADATA_SIGNING_KEY_FINGERPRINT: ${{ inputs.metadata-signing-key-fingerprint }}
+        INPUT_METADATA_SIGNING_KEY_PASSPHRASE: ${{ inputs.metadata-signing-key-passphrase }}
+        INPUT_REPOSITORY_KEY_FILENAME: ${{ inputs.repository-key-filename }}
+        INPUT_REQUIRE_SIGNED_RPMS: ${{ inputs.require-signed-rpms }}
+        INPUT_DRY_RUN: ${{ inputs.dry-run }}
+      run: '"${{ github.action_path }}/publish.sh"'
