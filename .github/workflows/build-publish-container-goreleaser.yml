@@ -13,6 +13,14 @@ on:
         type: number
         required: false
         default: 0
+      go_version:
+        type: string
+        required: false
+        description: 'Go version to use (e.g. "1.26.7", "stable"). Mutually exclusive with go_version_file.'
+      go_version_file:
+        type: string
+        required: false
+        description: 'Path to a go.mod or .go-version file containing the Go version. Mutually exclusive with go_version.'
       is_pr_build:
         type: boolean
         required: false
@@ -28,10 +36,11 @@ jobs:
   container_build_publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Set up latest stable Go
+      - name: Set up Go
         uses: actions/setup-go@v6.4.0
         with:
-          go-version: stable
+          go-version: ${{ inputs.go_version || 'stable' }}
+          go-version-file: ${{ inputs.go_version_file || '' }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
