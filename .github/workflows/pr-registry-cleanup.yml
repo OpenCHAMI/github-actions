@@ -1,0 +1,87 @@
+# Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+#
+# Reusable workflow: deletes the GHCR container image versions a pull request
+# published, once that pull request closes.
+
+name: Cleanup PR Container Images
+run-name: Cleanup container images for PR ${{ inputs.pr-number }}
+on:
+  workflow_call:
+    inputs:
+      pr-number:
+        description: 'Number of the PR whose container tags should be removed'
+        default: ${{ github.event.pull_request.number || github.event.number }}
+        type: string
+      tag-prefix:
+        description: 'Prefix of the tags published by PR builds; the base tag is `<tag-prefix><pr-number>`'
+        default: 'pr-'
+        type: string
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Resolve PR number
+        env:
+          PR_NUMBER: ${{ inputs.pr-number }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "${PR_NUMBER}" =~ ^[0-9]+$ ]]; then
+            echo "pr-number must be a PR number, got '${PR_NUMBER}'"
+            exit 1
+          fi
+
+      - name: Delete PR container image versions
+        # Cleanup is best effort: a package that was never published, or a tag a
+        # concurrent run already removed, must not fail the caller's PR close.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          PACKAGE: ${{ github.event.repository.name }}
+          PR_NUMBER: ${{ inputs.pr-number }}
+          TAG_PREFIX: ${{ inputs.tag-prefix }}
+        run: |
+          set -euo pipefail
+
+          base_tag="${TAG_PREFIX}${PR_NUMBER}"
+
+          echo "Cleaning up container images of ${PACKAGE} tagged ${base_tag}*..."
+
+          # A version is ours when one of its tags is the base tag itself or the
+          # base tag plus a separated qualifier (pr-12, pr-12-arm64,
+          # pr-12-dirty-abc123). Requiring the separator keeps a cleanup of
+          # pr-12 away from pr-123.
+          versions=$(gh api --paginate \
+            "/orgs/${OWNER}/packages/container/${PACKAGE}/versions" \
+            | jq -r --arg base "${base_tag}" '
+                .[]
+                | select(
+                    (.metadata.container.tags // [])
+                    | any(
+                        . == $base
+                        or (startswith($base) and (.[($base | length):] | test("^[-._]")))
+                      )
+                  )
+                | .id
+              ')
+
+          if [[ -z "${versions}" ]]; then
+            echo "No versions found for ${PACKAGE} tagged ${base_tag}*"
+            exit 0
+          fi
+
+          while read -r version_id; do
+            echo "Deleting version ID ${version_id}"
+            gh api --method DELETE \
+              "/orgs/${OWNER}/packages/container/${PACKAGE}/versions/${version_id}" \
+              || echo "Failed to delete version ${version_id}"
+          done <<< "${versions}"
+
+          echo "Cleanup completed for PR ${PR_NUMBER}"
