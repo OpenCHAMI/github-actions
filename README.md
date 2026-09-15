@@ -156,7 +156,9 @@ jobs:
 ```
 
 ### build-publish-container-goreleaser (Reusable Workflow)
-Builds and publishes a container image via GoReleaser, with multi-arch builds, build provenance attestation, and PR snapshot support.
+Builds and publishes a container image via GoReleaser, with multi-arch builds, build provenance attestation, and PR snapshot support. Release builds (`is_pr_build: false`) pass GitHub's auto-generated release notes for the pushed tag to GoReleaser via `--release-notes`.
+
+Optional `build_deps` is a space-separated list of apt packages installed before the build, for cases such as CGO cross-compilation that need a toolchain not present on the runner.
 
 **Usage:**
 ```yaml
@@ -166,6 +168,8 @@ jobs:
     with:
       registry_subject_name: ghcr.io/openchami/foo
       release_draft: false
+      cgo_enabled: 1
+      build_deps: gcc-aarch64-linux-gnu libc6-dev-arm64-cross
 ```
 
 ### build-rpm-quadlet (Reusable Workflow)
