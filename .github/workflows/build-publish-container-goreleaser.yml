@@ -45,6 +45,11 @@ jobs:
   container_build_publish:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-tags: true
+          fetch-depth: 0
       - name: Install build dependencies
         if: ${{ inputs.build_deps != '' }}
         env:
@@ -82,11 +87,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-        with:
-          fetch-tags: true
-          fetch-depth: 0
       # Set environment variables required by GoReleaser
       - name: Set build environment variables
         run: |
