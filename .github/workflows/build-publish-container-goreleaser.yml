@@ -109,13 +109,18 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git tag -f -a pr-${{ inputs.pr_number }} -m "PR Release"
+      - name: Generate release notes
+        if: ${{ !inputs.is_pr_build }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" -F tag_name="${{ github.ref_name }}" --jq .body > ../notes.md
       - name: Build/Push/Release container with goreleaser
         uses: goreleaser/goreleaser-action@v6
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           version: '~> 2'
-          args: release --clean ${{ inputs.is_pr_build && '--skip=announce,validate,archive' || '' }}${{ env.SKIP_CONTAINER_PUBLISH == 'true' && (inputs.is_pr_build && ',publish' || '--skip=publish') || '' }}${{ inputs.release_draft && ' --draft' || '' }}
+          args: release --clean ${{ inputs.is_pr_build && '--skip=announce,validate,archive' || '' }}${{ env.SKIP_CONTAINER_PUBLISH == 'true' && (inputs.is_pr_build && ',publish' || '--skip=publish') || '' }} ${{ inputs.release_draft && '--draft' || '' }} ${{ !inputs.is_pr_build && '--release-notes ../notes.md' || '' }}
         id: goreleaser
       - name: Process goreleaser output
         if: env.SKIP_CONTAINER_PUBLISH == 'false'
