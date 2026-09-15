@@ -21,6 +21,7 @@ Reusable GitHub Actions for CI/CD.
 - `.github/workflows/gpg-sign-artifacts.yml`: Signs unsigned RPM artifacts with a per-run ephemeral key
 - `.github/workflows/validate-rpm-quadlet.yml`: Validates a signed quadlet RPM's installed file list
 - `.github/workflows/release-signed-artifacts.yml`: Publishes a GitHub Release with signed RPMs and public keys
+- `.github/workflows/publish-release.yml`: Publishes the draft GitHub Release for a tag
 - `.github/workflows/lint-workflows.yml`: Reusable workflow that lints workflow files (actionlint + zizmor)
 - `.github/workflows/govulncheck.yml`: Reusable workflow that scans Go modules for known CVEs
 - `.github/workflows/dependency-review.yml`: Reusable workflow that gates PRs introducing CVE-flagged deps
@@ -164,6 +165,7 @@ jobs:
     uses: OpenCHAMI/github-actions/.github/workflows/build-publish-container-goreleaser.yml@v3.5
     with:
       registry_subject_name: ghcr.io/openchami/foo
+      release_draft: false
 ```
 
 ### build-rpm-quadlet (Reusable Workflow)
@@ -210,6 +212,19 @@ Publishes a GitHub Release for a tag, attaching signed RPMs and public keys, wit
 jobs:
   release:
     uses: OpenCHAMI/github-actions/.github/workflows/release-signed-artifacts.yml@v3.5
+    with:
+      release_draft: false
+```
+
+### publish-release (Reusable Workflow)
+Publishes the draft GitHub Release for a tag, for pipelines that set `release_draft: true` upstream so the release only appears once every artifact is attached.
+
+**Usage:**
+```yaml
+jobs:
+  publish:
+    needs: release
+    uses: OpenCHAMI/github-actions/.github/workflows/publish-release.yml@v3.9
 ```
 
 ### pr-registry-cleanup (Reusable Workflow)

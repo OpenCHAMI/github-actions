@@ -1,0 +1,27 @@
+# Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+#
+# Reusable workflow: publishes the draft GitHub Release for a tag once every
+# upstream job has finished attaching its artifacts.
+name: Publish release
+run-name: Publish release for ${{ github.ref }}
+permissions:
+  contents: write
+on:
+  workflow_call:
+    inputs:
+      make_latest:
+        description: 'Mark the published release as the latest release. Use "legacy" to defer to GitHub'
+        type: string
+        default: 'true'
+        required: false
+jobs:
+  publish-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        uses: softprops/action-gh-release@v3.0.2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          make_latest: ${{ inputs.make_latest }}

@@ -21,6 +21,21 @@ on:
         type: string
         default: 'public-keys'
         required: false
+      append_body:
+        description: 'Append the verification instructions to the existing release body instead of replacing it'
+        type: boolean
+        default: true
+        required: false
+      release_draft:
+        description: 'Leave the release in draft state'
+        type: boolean
+        default: false
+        required: false
+      release_name:
+        description: 'Release title. When empty, the existing release name is kept'
+        type: string
+        default: ''
+        required: false
 jobs:
   artifacts-release:
     runs-on: ubuntu-latest
@@ -51,7 +66,9 @@ jobs:
         uses: softprops/action-gh-release@v3.0.2
         with:
           tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
+          name: ${{ inputs.release_name }}
+          draft: ${{ inputs.release_draft }}
+          append_body: ${{ inputs.append_body }}
           fail_on_unmatched_files: true
           files: |
             dist/rpms/**/*.rpm
