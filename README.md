@@ -25,6 +25,7 @@ Reusable GitHub Actions for CI/CD.
 - `.github/workflows/govulncheck.yml`: Reusable workflow that scans Go modules for known CVEs
 - `.github/workflows/dependency-review.yml`: Reusable workflow that gates PRs introducing CVE-flagged deps
 - `.github/workflows/trivy-image-scan.yml`: Reusable workflow that scans built container images for CVEs
+- `.github/workflows/pr-registry-cleanup.yml`: Deletes the GHCR container images a PR published, once it closes
 
 ## Versioning & Usage
 
@@ -209,6 +210,23 @@ Publishes a GitHub Release for a tag, attaching signed RPMs and public keys, wit
 jobs:
   release:
     uses: OpenCHAMI/github-actions/.github/workflows/release-signed-artifacts.yml@v3.5
+```
+
+### pr-registry-cleanup (Reusable Workflow)
+Deletes the GHCR container image versions a pull request published, once that pull request closes. Matches the PR's base tag and any separated qualifier (`pr-12`, `pr-12-amd64`, `pr-12-dirty-abc123`).
+
+**Usage:**
+```yaml
+name: Cleanup
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cleanup:
+    uses: OpenCHAMI/github-actions/.github/workflows/pr-registry-cleanup.yml@v3.7
+    permissions:
+      packages: write
 ```
 
 ## Actions
