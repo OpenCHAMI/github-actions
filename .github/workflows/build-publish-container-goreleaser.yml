@@ -21,6 +21,11 @@ on:
         type: string
         required: false
         description: 'Path to a go.mod or .go-version file containing the Go version. Mutually exclusive with go_version.'
+      release_draft:
+        type: boolean
+        required: false
+        default: false
+        description: 'Create the release as a draft, overriding release.draft in .goreleaser.yml'
       is_pr_build:
         type: boolean
         required: false
@@ -98,7 +103,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           version: '~> 2'
-          args: release --clean ${{ inputs.is_pr_build && '--skip=announce,validate,archive' || '' }}${{ env.SKIP_CONTAINER_PUBLISH == 'true' && (inputs.is_pr_build && ',publish' || '--skip=publish') || '' }}
+          args: release --clean ${{ inputs.is_pr_build && '--skip=announce,validate,archive' || '' }}${{ env.SKIP_CONTAINER_PUBLISH == 'true' && (inputs.is_pr_build && ',publish' || '--skip=publish') || '' }}${{ inputs.release_draft && ' --draft' || '' }}
         id: goreleaser
       - name: Process goreleaser output
         if: env.SKIP_CONTAINER_PUBLISH == 'false'
