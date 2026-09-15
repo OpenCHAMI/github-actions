@@ -113,12 +113,12 @@ jobs:
           EOF
           echo "digest=$(cat digest.txt)" >> "${GITHUB_OUTPUT}"
       - name: Attest Binaries
-        if: env.SKIP_CONTAINER_PUBLISH == 'false'
+        if: ${{ (env.SKIP_CONTAINER_PUBLISH == 'false') && (inputs.is_pr_build == false) }}
         uses: actions/attest-build-provenance@v4.1.0
         with:
           subject-path: dist/**
       - name: generate build provenance
-        if: env.SKIP_CONTAINER_PUBLISH == 'false'
+        if: ${{ (env.SKIP_CONTAINER_PUBLISH == 'false') && (inputs.is_pr_build == false) }}
         uses: actions/attest-build-provenance@v4.1.0
         with:
           subject-name: ${{ inputs.registry_subject_name }}
