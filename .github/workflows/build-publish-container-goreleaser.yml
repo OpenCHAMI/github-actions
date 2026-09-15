@@ -9,6 +9,10 @@ name: Build and publish container using goreleaser
 on:
   workflow_call:
     inputs:
+      build_deps:
+        type: string
+        required: false
+        description: 'Space-separated list of apt packages to install before building (e.g. "gcc-aarch64-linux-gnu libc6-dev-arm64-cross").'
       cgo_enabled:
         type: number
         required: false
@@ -41,6 +45,14 @@ jobs:
   container_build_publish:
     runs-on: ubuntu-latest
     steps:
+      - name: Install build dependencies
+        if: ${{ inputs.build_deps != '' }}
+        env:
+          BUILD_DEPS: ${{ inputs.build_deps }}
+        run: |
+          sudo apt update
+          # shellcheck disable=SC2086 # intentional word splitting
+          sudo apt install -y --no-install-recommends ${BUILD_DEPS}
       - name: Set up Go
         uses: actions/setup-go@v6.4.0
         with:
