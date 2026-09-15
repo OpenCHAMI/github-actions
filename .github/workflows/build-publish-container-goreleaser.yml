@@ -114,9 +114,16 @@ jobs:
           const artifacts = ${{ steps.goreleaser.outputs.artifacts }};
           const firstNonNullDigest = artifacts.find(artifact => artifact.extra && artifact.extra.Digest != null)?.extra.Digest;
           console.log(firstNonNullDigest);
-          fs.writeFileSync('digest.txt', firstNonNullDigest);
+          if (firstNonNullDigest) {
+            fs.writeFileSync('digest.txt', firstNonNullDigest);
+          } else {
+            console.error('No digest found in artifacts');
+            process.exit(1);
+          }
           EOF
-          echo "digest=$(cat digest.txt)" >> "${GITHUB_OUTPUT}"
+          if [ -f digest.txt ]; then
+            echo "digest=$(cat digest.txt)" >> "${GITHUB_OUTPUT}"
+          fi
       - name: Attest Binaries
         if: ${{ (env.SKIP_CONTAINER_PUBLISH == 'false') && (inputs.is_pr_build == false) }}
         uses: actions/attest-build-provenance@v4.1.0
