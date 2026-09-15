@@ -39,7 +39,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6.4.0
         with:
-          go-version: ${{ inputs.go_version || 'stable' }}
+          go-version: ${{ inputs.go_version || (inputs.go_version_file == '' && 'stable' || '') }}
           go-version-file: ${{ inputs.go_version_file || '' }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
