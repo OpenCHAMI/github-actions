@@ -18,6 +18,9 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read   # baseline for checkout
+
 jobs:
   parse:
     runs-on: ubuntu-latest

@@ -25,7 +25,7 @@ on:
         default: './...'
 
 permissions:
-  contents: read
+  contents: read   # baseline for checkout
 
 jobs:
   govulncheck:
