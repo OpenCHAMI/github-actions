@@ -251,7 +251,10 @@ on:
   schedule:
     - cron: '39 5 * * 1'
 
-permissions: read-all
+permissions:
+  contents: read
+  security-events: write
+  id-token: write
 
 jobs:
   scorecard:
