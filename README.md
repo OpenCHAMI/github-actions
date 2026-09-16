@@ -168,7 +168,7 @@ jobs:
 ```
 
 ### reuse (Reusable Workflow)
-Runs `fsfe/reuse-action` over the caller repo to check [REUSE](https://reuse.software) compliance: every file carries a copyright notice and an SPDX license identifier, and every referenced license is present under `LICENSES/`.
+Runs the [`reuse`](https://reuse.software) tool over the caller repo via `pipx` to check REUSE compliance: every file carries a copyright notice and an SPDX license identifier, and every referenced license is present under `LICENSES/`. Pins `reuse` 6.2.0.
 
 **Usage:**
 ```yaml
