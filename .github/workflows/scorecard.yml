@@ -15,17 +15,15 @@ on:
   workflow_call:
 
 permissions:
-  contents: read   # baseline for checkout
+  contents: read          # baseline for checkout
+  security-events: write  # for SARIF upload to GHAS
+  id-token: write         # for publishing results to the OpenSSF dashboard
 
 jobs:
   scorecard:
     name: scorecard
     # Scorecard is a container action and needs a full-fat runner.
     runs-on: ubuntu-latest
-    permissions:
-      contents: read          # baseline for checkout
-      security-events: write  # for SARIF upload to GHAS
-      id-token: write         # for publishing results to the OpenSSF dashboard
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
