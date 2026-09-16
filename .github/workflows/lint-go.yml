@@ -25,11 +25,6 @@ on:
         required: false
         type: string
         default: 'latest'
-      tidy-command:
-        description: 'Command that tidies go.mod/go.sum before the diff check'
-        required: false
-        type: string
-        default: 'go mod tidy'
 
 permissions:
   contents: read   # baseline for checkout
@@ -62,8 +57,6 @@ jobs:
           go-version: ${{ inputs.go_version || (inputs.go_version_file == '' && 'stable' || '') }}
           go-version-file: ${{ inputs.go_version_file || '' }}
       - name: Check go.mod and go.sum are tidy
-        env:
-          TIDY_COMMAND: ${{ inputs.tidy-command }}
         run: |
-          eval "$TIDY_COMMAND"
+          go mod tidy
           git diff --exit-code -- go.mod go.sum
