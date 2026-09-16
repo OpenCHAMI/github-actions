@@ -19,7 +19,7 @@ on:
         type: string
 
 permissions:
-  packages: write
+  packages: write   # delete container image versions from GHCR
 
 jobs:
   cleanup:

@@ -25,6 +25,10 @@ on:
         description: 'Name for the public key composite artifact'
         type: string
         default: 'public-keys'
+
+permissions:
+  contents: read   # baseline for checkout
+
 jobs:
   artifacts-sign:
     runs-on: ubuntu-latest

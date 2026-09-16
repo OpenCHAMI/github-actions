@@ -51,12 +51,18 @@ on:
         type: string
         default: ''
 
-permissions: write-all # Necessary for provenance and SBOM attestations
+permissions:
+  contents: read   # baseline for all jobs
 
 jobs:
   build-push-images:
     environment: 'Docker Push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read       # checkout repository
+      packages: write      # docker login, image push, upload container provenance
+      id-token: write      # Sigstore signing (built-in provenance)
+      attestations: write  # built-in provenance & SBOM
     steps:
       - name: checkout repository
         uses: actions/checkout@v6.0.3
@@ -151,18 +157,18 @@ jobs:
     needs: build-push-images
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     permissions:
-      contents: write
+      contents: write  # create GitHub release
     steps:
-    - name: Parse semver string
-      id: semver_parser
-      uses: booxmedialtd/ws-action-parse-semver@v1.4.7
-      with:
-        input_string: ${{ github.event.ref }}
-        version_extractor_regex: 'refs/tags/v(.*)$'
-    - uses: ncipollo/release-action@v1.21.0
-      with:
-        # by default this will use the tag push tag as the tag and name
-        # if we want to trigger tagging from the workflow, "tag" and "commit"
-        # need to be set to create a new one
-        prerelease: ${{ steps.semver_parser.outputs.prerelease != '' }}
-        skipIfReleaseExists: true
+      - name: Parse semver string
+        id: semver_parser
+        uses: booxmedialtd/ws-action-parse-semver@v1.4.7
+        with:
+          input_string: ${{ github.event.ref }}
+          version_extractor_regex: 'refs/tags/v(.*)$'
+      - uses: ncipollo/release-action@v1.21.0
+        with:
+          # by default this will use the tag push tag as the tag and name
+          # if we want to trigger tagging from the workflow, "tag" and "commit"
+          # need to be set to create a new one
+          prerelease: ${{ steps.semver_parser.outputs.prerelease != '' }}
+          skipIfReleaseExists: true

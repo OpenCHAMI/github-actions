@@ -8,6 +8,9 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: read   # baseline for checkout
+
 jobs:
   lint:
     runs-on: ubuntu-latest

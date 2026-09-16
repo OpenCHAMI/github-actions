@@ -13,6 +13,10 @@ on:
         description: 'Artifact-name for unsigned RPM artifacts'
         default: 'rpms-unsigned'
         type: string
+
+permissions:
+  contents: read   # baseline for checkout
+
 jobs:
   rpmbuild:
     runs-on: ubuntu-latest

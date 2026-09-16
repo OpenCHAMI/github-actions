@@ -7,7 +7,7 @@
 name: Release signed artifacts
 run-name: Generate release with signed artifacts for ${{ github.ref }}
 permissions:
-  contents: write
+  contents: write   # create GitHub Release and upload artifacts
 on:
   workflow_call:
     inputs:

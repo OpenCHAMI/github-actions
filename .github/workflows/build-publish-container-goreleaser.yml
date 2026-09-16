@@ -41,6 +41,13 @@ on:
       registry_subject_name:
         type: string
         required: true
+
+permissions:
+  contents: write      # release creation, uploading assets
+  packages: write      # docker login, image push, upload container provenance
+  id-token: write      # Sigstore signing (attest-build-provenance)
+  attestations: write  # write build provenance attestations
+
 jobs:
   container_build_publish:
     runs-on: ubuntu-latest

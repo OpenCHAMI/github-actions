@@ -71,7 +71,11 @@ on:
         type: string
         default: ''
 
-permissions: write-all # Necessary for the generate-build-provenance action with containers
+permissions:
+  contents: write      # release creation, uploading assets
+  packages: write      # docker login, image push, upload container provenance
+  id-token: write      # Sigstore signing (attest-build-provenance)
+  attestations: write  # write build provenance attestations
 
 jobs:
   goreleaser:

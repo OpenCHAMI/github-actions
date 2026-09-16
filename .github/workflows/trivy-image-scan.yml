@@ -36,8 +36,8 @@ on:
         default: '1'
 
 permissions:
-  contents: read
-  security-events: write   # for SARIF upload to GHAS
+  contents: read          # baseline for checkout
+  security-events: write  # for SARIF upload to GHAS
 
 jobs:
   trivy:

@@ -36,7 +36,7 @@ on:
         default: 'on-failure'
 
 permissions:
-  contents: read
+  contents: read         # baseline for checkout
   pull-requests: write   # for comment-summary-in-pr
 
 jobs:
