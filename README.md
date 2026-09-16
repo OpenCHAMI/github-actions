@@ -23,9 +23,14 @@ Reusable GitHub Actions for CI/CD.
 - `.github/workflows/release-signed-artifacts.yml`: Publishes a GitHub Release with signed RPMs and public keys
 - `.github/workflows/publish-release.yml`: Publishes the draft GitHub Release for a tag
 - `.github/workflows/lint-workflows.yml`: Reusable workflow that lints workflow files (actionlint + zizmor)
+- `.github/workflows/lint-go.yml`: Reusable workflow that runs golangci-lint and checks go.mod/go.sum are tidy
+- `.github/workflows/test-go.yml`: Reusable workflow that runs Go unit tests
+- `.github/workflows/coverage-go.yml`: Reusable workflow that reports Go coverage and uploads it to Coveralls
+- `.github/workflows/reuse.yml`: Reusable workflow that checks REUSE copyright/licensing compliance
 - `.github/workflows/govulncheck.yml`: Reusable workflow that scans Go modules for known CVEs
 - `.github/workflows/dependency-review.yml`: Reusable workflow that gates PRs introducing CVE-flagged deps
 - `.github/workflows/trivy-image-scan.yml`: Reusable workflow that scans built container images for CVEs
+- `.github/workflows/scorecard.yml`: Reusable workflow that runs the OpenSSF Scorecard supply-chain analysis
 - `.github/workflows/pr-registry-cleanup.yml`: Deletes the GHCR container images a PR published, once it closes
 
 ## Versioning & Usage
@@ -101,6 +106,83 @@ jobs:
     uses: OpenCHAMI/github-actions/.github/workflows/lint-workflows.yml@v3.8
 ```
 
+### lint-go (Reusable Workflow)
+Lints the caller's Go module. Runs `golangci-lint`, and separately verifies `go.mod`/`go.sum` are tidy by running the tidy command and failing on a dirty diff. Uses Go `stable` unless the caller sets `go_version` or `go_version_file`. `golangci-lint` tracks `latest` unless pinned.
+
+**Usage:**
+```yaml
+name: Lint
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    uses: OpenCHAMI/github-actions/.github/workflows/lint-go.yml@v3.9
+    # Optional overrides:
+    # with:
+    #   golangci-lint-version: v2.13.2
+    #   go_version_file: go.mod
+    #   tidy-command: make mod
+```
+
+### test-go (Reusable Workflow)
+Runs the caller's Go unit tests. Fetches tags so tests asserting on `git describe` version metadata behave as they do locally.
+
+**Usage:**
+```yaml
+name: Test
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    uses: OpenCHAMI/github-actions/.github/workflows/test-go.yml@v3.9
+    # Optional overrides:
+    # with:
+    #   go_version_file: go.mod
+    #   test-command: make test
+```
+
+### coverage-go (Reusable Workflow)
+Produces a Go coverage profile, writes the total to the job summary, and uploads the profile to Coveralls using the automatically-provided `GITHUB_TOKEN`. The caller repo must be enrolled in Coveralls.
+
+**Usage:**
+```yaml
+name: Coverage
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  coverage:
+    uses: OpenCHAMI/github-actions/.github/workflows/coverage-go.yml@v3.9
+    # Optional overrides:
+    # with:
+    #   go_version_file: go.mod
+    #   coverage-command: make coverage
+```
+
+### reuse (Reusable Workflow)
+Runs `fsfe/reuse-action` over the caller repo to check [REUSE](https://reuse.software) compliance: every file carries a copyright notice and an SPDX license identifier, and every referenced license is present under `LICENSES/`.
+
+**Usage:**
+```yaml
+name: REUSE
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  reuse:
+    uses: OpenCHAMI/github-actions/.github/workflows/reuse.yml@v3.9
+```
+
 ### govulncheck (Reusable Workflow)
 Runs the Go team's vulnerability scanner against the caller's module. Detects known CVEs in the import graph (direct and transitive). Reads the Go version from the caller's `go.mod` by default.
 
@@ -153,6 +235,27 @@ jobs:
     uses: OpenCHAMI/github-actions/.github/workflows/trivy-image-scan.yml@v3.8
     with:
       image-ref: ghcr.io/openchami/foo:${{ github.sha }}
+```
+
+### scorecard (Reusable Workflow)
+Runs the OpenSSF Scorecard supply-chain analysis and uploads SARIF findings to GitHub Advanced Security. Outside of `pull_request` runs it also publishes to the public OpenSSF dashboard, which is what backs the Scorecard badge. Trigger it on the default branch, on PRs, and on a schedule — running it on other branches scores an incomplete tree.
+
+**Usage:**
+```yaml
+name: Scorecard
+on:
+  branch_protection_rule:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '39 5 * * 1'
+
+permissions: read-all
+
+jobs:
+  scorecard:
+    uses: OpenCHAMI/github-actions/.github/workflows/scorecard.yml@v3.9
 ```
 
 ### build-publish-container-goreleaser (Reusable Workflow)

@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: coverage-go
+
+# Reusable workflow that produces a Go coverage profile, writes the total
+# to the job summary, and uploads the profile to Coveralls.
+#
+# The caller repo must be enrolled in Coveralls; the upload authenticates
+# with the automatically-provided GITHUB_TOKEN.
+
+on:
+  workflow_call:
+    inputs:
+      go_version:
+        description: 'Go version to use (e.g. "1.26.7", "stable"). Mutually exclusive with go_version_file.'
+        required: false
+        type: string
+      go_version_file:
+        description: 'Path to a go.mod or .go-version file containing the Go version. Mutually exclusive with go_version.'
+        required: false
+        type: string
+      coverage-command:
+        description: 'Command that writes the coverage profile to `coverage-file`'
+        required: false
+        type: string
+        default: 'go test -coverprofile=coverage.out ./...'
+      coverage-file:
+        description: 'Path to the coverage profile written by `coverage-command`'
+        required: false
+        type: string
+        default: 'coverage.out'
+
+permissions:
+  contents: read   # baseline for checkout
+
+jobs:
+  coverage-go:
+    name: coverage-go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: ${{ inputs.go_version || (inputs.go_version_file == '' && 'stable' || '') }}
+          go-version-file: ${{ inputs.go_version_file || '' }}
+
+      - name: Run tests with coverage
+        env:
+          COVERAGE_COMMAND: ${{ inputs.coverage-command }}
+        run: eval "$COVERAGE_COMMAND"
+
+      - name: Report total coverage
+        env:
+          COVERAGE_FILE: ${{ inputs.coverage-file }}
+        run: |
+          total=$(go tool cover -func="$COVERAGE_FILE" | awk '/^total:/ {print $3}')
+          echo "Total coverage: ${total}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage to Coveralls
+        uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
+        with:
+          file: ${{ inputs.coverage-file }}
+          format: golang
+          github-token: ${{ secrets.GITHUB_TOKEN }}
