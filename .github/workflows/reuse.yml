@@ -9,6 +9,12 @@ name: reuse
 
 on:
   workflow_call:
+    inputs:
+      reuse_version:
+        type: string
+        required: false
+        default: '6.2.0'
+        description: 'Reuse CLI version to use (e.g. "6.2.0").'
 
 permissions:
   contents: read   # baseline for checkout
@@ -23,4 +29,6 @@ jobs:
         with:
           persist-credentials: false
       - name: REUSE compliance check
-        run: pipx run --backend pip --spec reuse==6.2.0 reuse lint --lines
+        env:
+          REUSE_VERSION: ${{ inputs.reuse_version }}
+        run: pipx run --backend pip --spec "reuse==$REUSE_VERSION" reuse lint --lines
