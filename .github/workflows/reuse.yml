@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: reuse
+
+# Reusable workflow that checks the caller repo for REUSE compliance —
+# every file carries a copyright notice and an SPDX license identifier,
+# and every referenced license is present under LICENSES/.
+
+on:
+  workflow_call:
+    inputs:
+      reuse_version:
+        type: string
+        required: false
+        default: '6.2.0'
+        description: 'Reuse CLI version to use (e.g. "6.2.0").'
+
+permissions:
+  contents: read   # baseline for checkout
+
+jobs:
+  reuse:
+    name: reuse
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: REUSE compliance check
+        env:
+          REUSE_VERSION: ${{ inputs.reuse_version }}
+        run: pipx run --backend pip --spec "reuse==$REUSE_VERSION" reuse lint --lines
