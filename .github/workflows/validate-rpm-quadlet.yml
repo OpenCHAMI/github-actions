@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   parse:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       matrix: ${{ steps.parse.outputs.matrix }}
     steps:
@@ -35,21 +35,12 @@ jobs:
   rpmvalidate:
     needs: parse
     name: validate (${{ matrix.rpm.name }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     strategy:
       fail-fast: false
       matrix:
         rpm: ${{ fromJSON(needs.parse.outputs.matrix) }}
-    container:
-      image: rockylinux:9
     steps:
-
-      - name: Install build dependencies
-        run: dnf install -y -q git rpmlint tar gzip diffutils jq
-
-      - name: Mark workspace as a safe git directory
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
       - uses: actions/checkout@v6.0.2
         with:
           fetch-tags: true

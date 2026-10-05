@@ -37,15 +37,8 @@ on:
         required: false
 jobs:
   artifacts-release:
-    runs-on: ubuntu-latest
-    container:
-      image: rockylinux:9
+    runs-on: ubuntu-slim
     steps:
-      - name: Install dependencies
-        run: |
-          dnf install -y -q git tar gzip zip
-      - name: Mark workspace as a safe git directory
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Checkout
         uses: actions/checkout@v6.0.2
         with:
