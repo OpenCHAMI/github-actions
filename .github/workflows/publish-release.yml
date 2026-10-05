@@ -14,13 +14,22 @@ on:
         type: string
         default: 'true'
         required: false
+      draft:
+        description: 'Leave the release in draft state'
+        type: boolean
+        default: false
+        required: false
 jobs:
   publish-release:
     runs-on: ubuntu-slim
     steps:
       - name: Publish release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          tag_name: ${{ github.ref_name }}
-          draft: false
-          make_latest: ${{ inputs.make-latest }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          DRAFT: ${{ inputs.draft }}
+          MAKE_LATEST: ${{ inputs.make-latest }}
+        run: |
+          latest=()
+          [[ "$MAKE_LATEST" != legacy ]] && latest=(--latest="$MAKE_LATEST")
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft="$DRAFT" "${latest[@]}"

@@ -342,6 +342,7 @@ jobs:
     # Optional overrides:
     # with:
     #   make-latest: legacy  # true | false | legacy
+    #   draft: true
 ```
 
 ### pr-registry-cleanup (Reusable Workflow)
