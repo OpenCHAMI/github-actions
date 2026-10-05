@@ -4,7 +4,7 @@
 # ############################################################################
 # #  DEPRECATED ACTION -- DO NOT USE IN NEW CALLERS
 # #
-# #  gpg-sign-rpm is replaced by nfpm package signing in build-release-goreleaser.yml (signing-key secret).
+# #  gpg-sign-rpm is replaced by nfpm package signing in build-release-goreleaser.yml (gpg-key secret).
 # #  It is kept only so callers pinned to older refs keep working, and will be
 # #  removed in a future major release. See README.md for migration notes.
 # ############################################################################
@@ -38,7 +38,7 @@ runs:
     - name: Deprecation warning
       shell: bash
       run: |
-        echo "::warning title=Deprecated action::gpg-sign-rpm is deprecated; migrate to nfpm package signing in build-release-goreleaser.yml (signing-key secret)."
+        echo "::warning title=Deprecated action::gpg-sign-rpm is deprecated; migrate to nfpm package signing in build-release-goreleaser.yml (gpg-key secret)."
     - name: Install RPM tools
       shell: bash
       run: |
