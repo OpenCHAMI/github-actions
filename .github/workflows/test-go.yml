@@ -3,9 +3,13 @@
 
 name: test-go
 
-# Reusable workflow that runs the caller's Go unit tests. Fetches tags so
-# tests that assert on version metadata derived from `git describe` behave
-# the same as they do locally.
+# Reusable workflow that runs the caller's Go unit tests, optionally writing a
+# coverage profile, reporting the total, and uploading it to Coveralls. Fetches
+# tags so tests that assert on version metadata derived from `git describe`
+# behave the same as they do locally.
+#
+# With coverage enabled, the caller repo must be enrolled in Coveralls; the
+# upload authenticates with the automatically-provided GITHUB_TOKEN.
 
 on:
   workflow_call:
@@ -18,11 +22,21 @@ on:
         description: 'Path to a go.mod or .go-version file containing the Go version. Mutually exclusive with go_version.'
         required: false
         type: string
-      test-command:
-        description: 'Command that runs the tests'
+      test-args:
+        description: 'Arguments passed to `go test` (flags and packages)'
         required: false
         type: string
-        default: 'go test -race ./...'
+        default: '-race ./...'
+      coverage:
+        description: 'Write a coverage profile, report the total, and upload it to Coveralls'
+        required: false
+        type: boolean
+        default: false
+      coverage-file:
+        description: 'Path of the coverage profile written when coverage is true'
+        required: false
+        type: string
+        default: 'coverage.out'
 
 permissions:
   contents: read   # baseline for checkout
@@ -39,7 +53,32 @@ jobs:
         with:
           go-version: ${{ inputs.go_version || (inputs.go_version_file == '' && 'stable' || '') }}
           go-version-file: ${{ inputs.go_version_file || '' }}
+
       - name: Run tests
         env:
-          TEST_COMMAND: ${{ inputs.test-command }}
-        run: eval "$TEST_COMMAND"
+          TEST_ARGS: ${{ inputs.test-args }}
+          COVERAGE: ${{ inputs.coverage }}
+          COVERAGE_FILE: ${{ inputs.coverage-file }}
+        run: |
+          cover_args=()
+          if [[ "$COVERAGE" == 'true' ]]; then
+            cover_args=("-coverprofile=${COVERAGE_FILE}")
+          fi
+          # shellcheck disable=SC2086 # intentional word splitting
+          go test $TEST_ARGS "${cover_args[@]}"
+
+      - name: Report total coverage
+        if: ${{ inputs.coverage }}
+        env:
+          COVERAGE_FILE: ${{ inputs.coverage-file }}
+        run: |
+          total=$(go tool cover -func="$COVERAGE_FILE" | awk '/^total:/ {print $3}')
+          echo "Total coverage: ${total}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage to Coveralls
+        if: ${{ inputs.coverage }}
+        uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
+        with:
+          file: ${{ inputs.coverage-file }}
+          format: golang
+          github-token: ${{ secrets.GITHUB_TOKEN }}
