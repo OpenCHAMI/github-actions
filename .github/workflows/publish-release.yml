@@ -5,7 +5,7 @@
 # upstream job has finished attaching its artifacts.
 name: publish-release
 permissions:
-  contents: write
+  contents: write   # publish the draft GitHub Release
 on:
   workflow_call:
     inputs:
