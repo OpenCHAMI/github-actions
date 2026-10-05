@@ -32,6 +32,11 @@ Reusable GitHub Actions for CI/CD.
 - `.github/workflows/scorecard.yml`: Reusable workflow that runs the OpenSSF Scorecard supply-chain analysis
 - `.github/workflows/pr-registry-cleanup.yml`: Deletes the GHCR container images a PR published, once it closes
 
+### Workflow naming
+
+`0-local-*` workflows are this repo's own CI, not reusable workflows. The `0`
+just sorts them to the top.
+
 ## Versioning & Usage
 
 Use major version tags for stability:
@@ -457,7 +462,7 @@ jobs:
 
 ## Continuous Integration
 
-- Workflow files are linted via `lint-ci.yml` (actionlint + zizmor).
+- Workflow files are linted via `0-local-ci.yml`, which calls `lint-ci.yml` (actionlint + zizmor).
 - RPM/quadlet output is validated via `validate-rpm-quadlet.yml`.
 - TODO: matrix test invoking each action directly.
 

@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: CI
+
+# Local to this repo: CI for github-actions itself. Not a reusable workflow;
+# do not call it from other repos. See "Workflow naming" in the README.
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read   # baseline for checkout
+
+jobs:
+  lint:
+    uses: ./.github/workflows/lint-ci.yml
+    permissions:
+      contents: read          # baseline for checkout
+      security-events: write  # zizmor SARIF upload to GHAS
