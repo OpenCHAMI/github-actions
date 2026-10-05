@@ -4,7 +4,7 @@
 # ############################################################################
 # #  DEPRECATED WORKFLOW -- DO NOT USE IN NEW CALLERS
 # #
-# #  gpg-sign-artifacts is replaced by nfpm package signing in build-release-goreleaser.yml (signing-key secret).
+# #  gpg-sign-artifacts is replaced by nfpm package signing in build-release-goreleaser.yml (gpg-key secret).
 # #  It is kept only so callers pinned to older refs keep working, and will be
 # #  removed in a future major release. See README.md for migration notes.
 # ############################################################################
@@ -44,7 +44,7 @@ jobs:
     steps:
       - name: Deprecation warning
         run: |
-          echo "::warning title=Deprecated workflow::gpg-sign-artifacts.yml is deprecated; migrate to nfpm package signing in build-release-goreleaser.yml (signing-key secret)."
+          echo "::warning title=Deprecated workflow::gpg-sign-artifacts.yml is deprecated; migrate to nfpm package signing in build-release-goreleaser.yml (gpg-key secret)."
 
       - name: Install build dependencies
         run: |

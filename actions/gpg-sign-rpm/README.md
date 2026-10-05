@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 # RPM Signing Action
 
 > [!CAUTION]
-> **Deprecated.** Replaced by nfpm package signing in build-release-goreleaser.yml (signing-key secret). Kept only for callers pinned to older refs; it will be removed in a future major release.
+> **Deprecated.** Replaced by nfpm package signing in build-release-goreleaser.yml (gpg-key secret). Kept only for callers pinned to older refs; it will be removed in a future major release.
 
 Signs an RPM file using a GPG key fingerprint (typically an ephemeral key produced by the `gpg-configure-release-keys` action). Designed to pair with ephemeral, short-lived keys to reduce long-term key exposure in CI.
 
