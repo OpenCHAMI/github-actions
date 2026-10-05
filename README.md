@@ -30,6 +30,7 @@ Reusable GitHub Actions for CI/CD.
 - `.github/workflows/trivy-image-scan.yml`: Reusable workflow that scans built container images for CVEs
 - `.github/workflows/scorecard.yml`: Reusable workflow that runs the OpenSSF Scorecard supply-chain analysis
 - `.github/workflows/pr-registry-cleanup.yml`: Deletes the GHCR container images a PR published, once it closes
+- `.github/workflows/stale.yml`: Reusable workflow that marks and closes inactive issues and PRs (org-default policy)
 
 ### Workflow naming
 
@@ -367,6 +368,38 @@ jobs:
     # with:
     #   pr-number: 123
     #   tag-prefix: pr-
+```
+
+### stale (Reusable Workflow)
+Marks issues and PRs stale after a period of inactivity and closes them if nothing changes, using the org-default `actions/stale` policy (stale after 35 days, closed 7 days later; `pinned`/`security` items exempt). Updating an item removes the stale label. The caller owns the schedule.
+
+**Usage:**
+```yaml
+name: Stale
+on:
+  schedule:
+    - cron: '23 3 * * *'  # daily at 03:23 UTC
+  workflow_dispatch:
+
+jobs:
+  stale:
+    uses: OpenCHAMI/github-actions/.github/workflows/stale.yml@v4.0
+    permissions:
+      issues: write
+      pull-requests: write
+    # Optional overrides:
+    # with:
+    #   days-before-stale: 35
+    #   days-before-close: 7
+    #   stale-issue-label: stale
+    #   stale-pr-label: stale
+    #   exempt-issue-labels: pinned,security,help wanted
+    #   exempt-pr-labels: pinned,security
+    #   operations-per-run: 500
+    #   stale-issue-message: ...
+    #   close-issue-message: ...
+    #   stale-pr-message: ...
+    #   close-pr-message: ...
 ```
 
 ## Actions
