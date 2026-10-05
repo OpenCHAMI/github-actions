@@ -9,17 +9,17 @@ Reusable GitHub Actions for CI/CD.
 
 ## Structure
 
-- `actions/gpg-configure-release-keys`: Generates and certifies a per-run ephemeral GPG key through the repo's release key chain
-- `actions/gpg-sign-rpm`: RPM signing with ephemeral keys
+- `actions/gpg-configure-release-keys`: **Deprecated** - use nfpm package signing in `build-release-goreleaser` instead. Generates and certifies a per-run ephemeral GPG key through the repo's release key chain
+- `actions/gpg-sign-rpm`: **Deprecated** - use nfpm package signing in `build-release-goreleaser` instead. RPM signing with ephemeral keys
 - `actions/gpg-check-key-expiration`: Fails CI if a signing key is expired or expiring soon
-- `actions/gpg-verify-trust-chain`: Verifies the master/repo-cert/ephemeral trust chain and optionally checksigs RPMs
-- `.github/workflows/go-build-release.yml`: Reusable workflow for GoReleaser builds
-- `.github/workflows/docker-build-release.yml`: Reusable workflow for multi-arch container image builds
-- `.github/workflows/build-publish-container-goreleaser.yml`: Builds and publishes a container image via GoReleaser
-- `.github/workflows/build-rpm-quadlet.yml`: Builds a caller repo's podman quadlet RPM
-- `.github/workflows/gpg-sign-artifacts.yml`: Signs unsigned RPM artifacts with a per-run ephemeral key
-- `.github/workflows/validate-rpm-quadlet.yml`: Validates a signed quadlet RPM's installed file list
-- `.github/workflows/release-signed-artifacts.yml`: Publishes a GitHub Release with signed RPMs and public keys
+- `actions/gpg-verify-trust-chain`: **Deprecated** - use the `rpm -K` check in `validate-packages` instead. Verifies the master/repo-cert/ephemeral trust chain and optionally checksigs RPMs
+- `.github/workflows/go-build-release.yml`: **Deprecated** - use `build-release-goreleaser` (build-only: `build-check-goreleaser`) instead. Reusable workflow for GoReleaser builds
+- `.github/workflows/docker-build-release.yml`: **Deprecated** - use `build-release-goreleaser` (build-only: `build-check-goreleaser`) instead. Reusable workflow for multi-arch container image builds
+- `.github/workflows/build-publish-container-goreleaser.yml`: **Deprecated** - use `build-release-goreleaser` (build-only: `build-check-goreleaser`) instead. Builds and publishes a container image via GoReleaser
+- `.github/workflows/build-rpm-quadlet.yml`: **Deprecated** - use nfpm packages built by `build-release-goreleaser` / `build-check-goreleaser` instead. Builds a caller repo's podman quadlet RPM
+- `.github/workflows/gpg-sign-artifacts.yml`: **Deprecated** - use nfpm package signing in `build-release-goreleaser` instead. Signs unsigned RPM artifacts with a per-run ephemeral key
+- `.github/workflows/validate-rpm-quadlet.yml`: **Deprecated** - use `validate-packages` instead. Validates a signed quadlet RPM's installed file list
+- `.github/workflows/release-signed-artifacts.yml`: **Deprecated** - use the release created by `build-release-goreleaser` instead. Publishes a GitHub Release with signed RPMs and public keys
 - `.github/workflows/publish-release.yml`: Publishes the draft GitHub Release for a tag
 - `.github/workflows/lint-ci.yml`: Reusable workflow that lints workflow files (actionlint + zizmor)
 - `.github/workflows/lint-go.yml`: Reusable workflow that runs golangci-lint and checks go.mod/go.sum are tidy
@@ -57,7 +57,11 @@ Pin a commit SHA instead for maximum supply-chain safety if desired.
 
 ## Workflows
 
-### go-build-release (Reusable Workflow)
+### go-build-release (Reusable Workflow, Deprecated)
+
+> [!CAUTION]
+> **Deprecated.** Use `build-release-goreleaser` (build-only: `build-check-goreleaser`) instead. Kept only for callers pinned to older refs; it will be removed in a future major release.
+
 Standardized GoReleaser workflow for building and releasing Go applications with:
 - Multi-architecture builds (linux/amd64, linux/arm64)
 - Flexible pre-build setup steps
@@ -266,7 +270,11 @@ jobs:
     uses: OpenCHAMI/github-actions/.github/workflows/scorecard.yml@v4.0
 ```
 
-### build-publish-container-goreleaser (Reusable Workflow)
+### build-publish-container-goreleaser (Reusable Workflow, Deprecated)
+
+> [!CAUTION]
+> **Deprecated.** Use `build-release-goreleaser` (build-only: `build-check-goreleaser`) instead. Kept only for callers pinned to older refs; it will be removed in a future major release.
+
 Builds and publishes a container image via GoReleaser, with multi-arch builds, build provenance attestation, and PR snapshot support. Release builds (`is-pr-build: false`) pass GitHub's auto-generated release notes for the pushed tag to GoReleaser via `--release-notes`.
 
 Optional `build-deps` is a space-separated list of apt packages installed before the build, for cases such as CGO cross-compilation that need a toolchain not present on the runner.
@@ -283,7 +291,11 @@ jobs:
       build-deps: gcc-aarch64-linux-gnu libc6-dev-arm64-cross
 ```
 
-### build-rpm-quadlet (Reusable Workflow)
+### build-rpm-quadlet (Reusable Workflow, Deprecated)
+
+> [!CAUTION]
+> **Deprecated.** Use nfpm packages built by `build-release-goreleaser` / `build-check-goreleaser` instead. Kept only for callers pinned to older refs; it will be removed in a future major release.
+
 Builds the caller repo's podman quadlet RPM and uploads it as an unsigned artifact for downstream signing.
 
 **Usage:**
@@ -296,7 +308,11 @@ jobs:
     #   artifact-name-unsigned-rpms: rpms-unsigned
 ```
 
-### gpg-sign-artifacts (Reusable Workflow)
+### gpg-sign-artifacts (Reusable Workflow, Deprecated)
+
+> [!CAUTION]
+> **Deprecated.** Use nfpm package signing in `build-release-goreleaser` instead. Kept only for callers pinned to older refs; it will be removed in a future major release.
+
 Signs unsigned RPM artifacts with a per-run ephemeral key certified through the repo's release key chain, verifies the chain, and uploads the signed RPMs and public keys. Intended as the common entry point for signing all release artifact types (RPMs today; other formats later).
 
 **Usage:**
@@ -307,7 +323,11 @@ jobs:
     secrets: inherit
 ```
 
-### validate-rpm-quadlet (Reusable Workflow)
+### validate-rpm-quadlet (Reusable Workflow, Deprecated)
+
+> [!CAUTION]
+> **Deprecated.** Use `validate-packages` instead. Kept only for callers pinned to older refs; it will be removed in a future major release.
+
 Validates a signed quadlet RPM's installed file list against the set of files the caller expects it to ship.
 
 **Usage:**
@@ -323,7 +343,11 @@ jobs:
             - /etc/containers/systemd/foo.container
 ```
 
-### release-signed-artifacts (Reusable Workflow)
+### release-signed-artifacts (Reusable Workflow, Deprecated)
+
+> [!CAUTION]
+> **Deprecated.** Use the release created by `build-release-goreleaser` instead. Kept only for callers pinned to older refs; it will be removed in a future major release.
+
 Publishes a GitHub Release for a tag, attaching signed RPMs and public keys, with trust-chain verification instructions in the release body.
 
 **Usage:**
@@ -426,19 +450,34 @@ jobs:
 
 ## Actions
 
-### gpg-configure-release-keys
+### gpg-configure-release-keys (Deprecated)
+
+> [!CAUTION]
+> **Deprecated.** Use nfpm package signing in `build-release-goreleaser` instead. Kept only for callers pinned to older refs; it will be removed in a future major release.
+
 Generates a per-run ephemeral GPG key, certified through the repo's release key chain (master certifies a repo cert key, which certifies the ephemeral key). See the [action README](actions/gpg-configure-release-keys/README.md).
 
-### gpg-sign-rpm
+### gpg-sign-rpm (Deprecated)
+
+> [!CAUTION]
+> **Deprecated.** Use nfpm package signing in `build-release-goreleaser` instead. Kept only for callers pinned to older refs; it will be removed in a future major release.
+
 Signs an RPM using a provided GPG fingerprint (works with the ephemeral key output from `gpg-configure-release-keys`) and exposes signature verification output. See the [action README](actions/gpg-sign-rpm/README.md).
 
 ### gpg-check-key-expiration
 Fails CI if the provided signing key is expired or expiring within a threshold. See the [action README](actions/gpg-check-key-expiration/README.md).
 
-### gpg-verify-trust-chain
+### gpg-verify-trust-chain (Deprecated)
+
+> [!CAUTION]
+> **Deprecated.** Use the `rpm -K` check in `validate-packages` instead. Kept only for callers pinned to older refs; it will be removed in a future major release.
+
 Verifies the master/repo-cert/ephemeral trust chain and optionally checksigs RPMs. See the [action README](actions/gpg-verify-trust-chain/README.md).
 
 ## Security Model
+
+> [!CAUTION]
+> **Deprecated.** The ephemeral-key trust chain below is being retired in favor of a single signing key used by `build-release-goreleaser`. It applies only to the deprecated signing workflows and actions.
 
 Trust chain: `Ephemeral Key <- Repo Cert Key <- Offline Master Key`.
 
@@ -451,6 +490,9 @@ Design principles:
 Key expiration limits future signing only; existing signatures remain valid if the trust chain remains intact.
 
 ## Example Workflow (Combined)
+
+> [!CAUTION]
+> **Deprecated.** This example uses deprecated workflows. New pipelines should use `build-release-goreleaser` + `validate-packages`.
 
 Adapted from metadata-service's PR build workflow, chaining container build, RPM build, signing, and validation:
 

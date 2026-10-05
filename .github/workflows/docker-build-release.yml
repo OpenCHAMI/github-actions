@@ -1,5 +1,13 @@
 # SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
+#
+# ############################################################################
+# #  DEPRECATED WORKFLOW -- DO NOT USE IN NEW CALLERS
+# #
+# #  docker-build-release is replaced by build-release-goreleaser.yml (GoReleaser builds the images; build-only: build-check-goreleaser.yml).
+# #  It is kept only so callers pinned to older refs keep working, and will be
+# #  removed in a future major release. See README.md for migration notes.
+# ############################################################################
 
 name: docker-build-release
 
@@ -63,6 +71,9 @@ jobs:
       id-token: write      # Sigstore signing (built-in provenance)
       attestations: write  # built-in provenance & SBOM
     steps:
+      - name: Deprecation warning
+        run: |
+          echo "::warning title=Deprecated workflow::docker-build-release.yml is deprecated; migrate to build-release-goreleaser.yml (GoReleaser builds the images; build-only: build-check-goreleaser.yml)."
       - name: checkout repository
         uses: actions/checkout@v6.0.3
         with:
@@ -158,6 +169,9 @@ jobs:
     permissions:
       contents: write  # create GitHub release
     steps:
+      - name: Deprecation warning
+        run: |
+          echo "::warning title=Deprecated workflow::docker-build-release.yml is deprecated; migrate to build-release-goreleaser.yml (GoReleaser builds the images; build-only: build-check-goreleaser.yml)."
       - name: Parse semver string
         id: semver-parser
         uses: booxmedialtd/ws-action-parse-semver@v1.4.7

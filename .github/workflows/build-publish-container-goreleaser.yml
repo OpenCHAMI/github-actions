@@ -1,6 +1,14 @@
 # Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
 #
+# ############################################################################
+# #  DEPRECATED WORKFLOW -- DO NOT USE IN NEW CALLERS
+# #
+# #  build-publish-container-goreleaser is replaced by build-release-goreleaser.yml (build-only: build-check-goreleaser.yml).
+# #  It is kept only so callers pinned to older refs keep working, and will be
+# #  removed in a future major release. See README.md for migration notes.
+# ############################################################################
+#
 # Reusable workflow: builds and publishes a container image via GoReleaser,
 # with multi-arch builds, build provenance attestation, and PR snapshot
 # support.
@@ -52,6 +60,9 @@ jobs:
   container-build-publish:
     runs-on: ubuntu-latest
     steps:
+      - name: Deprecation warning
+        run: |
+          echo "::warning title=Deprecated workflow::build-publish-container-goreleaser.yml is deprecated; migrate to build-release-goreleaser.yml (build-only: build-check-goreleaser.yml)."
       - name: Checkout
         uses: actions/checkout@v6.0.2
         with:

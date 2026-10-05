@@ -1,6 +1,14 @@
 # Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
 #
+# ############################################################################
+# #  DEPRECATED WORKFLOW -- DO NOT USE IN NEW CALLERS
+# #
+# #  gpg-sign-artifacts is replaced by nfpm package signing in build-release-goreleaser.yml (signing-key secret).
+# #  It is kept only so callers pinned to older refs keep working, and will be
+# #  removed in a future major release. See README.md for migration notes.
+# ############################################################################
+#
 # Reusable workflow: intended as the common entry point for signing all
 # release artifact types (RPMs today; other formats later) with a per-run
 # ephemeral key certified through the repo's release key chain.
@@ -34,6 +42,9 @@ jobs:
     container:
       image: rockylinux:9
     steps:
+      - name: Deprecation warning
+        run: |
+          echo "::warning title=Deprecated workflow::gpg-sign-artifacts.yml is deprecated; migrate to nfpm package signing in build-release-goreleaser.yml (signing-key secret)."
 
       - name: Install build dependencies
         run: |
