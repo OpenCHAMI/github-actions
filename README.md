@@ -21,7 +21,7 @@ Reusable GitHub Actions for CI/CD.
 - `.github/workflows/validate-rpm-quadlet.yml`: Validates a signed quadlet RPM's installed file list
 - `.github/workflows/release-signed-artifacts.yml`: Publishes a GitHub Release with signed RPMs and public keys
 - `.github/workflows/publish-release.yml`: Publishes the draft GitHub Release for a tag
-- `.github/workflows/lint-workflows.yml`: Reusable workflow that lints workflow files (actionlint + zizmor)
+- `.github/workflows/lint-ci.yml`: Reusable workflow that lints workflow files (actionlint + zizmor)
 - `.github/workflows/lint-go.yml`: Reusable workflow that runs golangci-lint and checks go.mod/go.sum are tidy
 - `.github/workflows/test-go.yml`: Reusable workflow that runs Go unit tests
 - `.github/workflows/coverage-go.yml`: Reusable workflow that reports Go coverage and uploads it to Coveralls
@@ -86,7 +86,7 @@ jobs:
 
 See the [workflow](.github/workflows/go-build-release.yml) for additional input parameters.
 
-### lint-workflows (Reusable Workflow)
+### lint-ci (Reusable Workflow)
 Lints the caller repo's GitHub Actions workflow files.
 
 - **actionlint** - syntax validation, shellcheck on `run:` steps, deprecated-action checks.
@@ -94,7 +94,7 @@ Lints the caller repo's GitHub Actions workflow files.
 
 **Usage:**
 ```yaml
-name: Lint Workflows
+name: Lint CI
 on:
   pull_request:
   push:
@@ -102,7 +102,7 @@ on:
 
 jobs:
   lint:
-    uses: OpenCHAMI/github-actions/.github/workflows/lint-workflows.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/lint-ci.yml@v3.12
 ```
 
 ### lint-go (Reusable Workflow)
@@ -457,7 +457,7 @@ jobs:
 
 ## Continuous Integration
 
-- Workflow files are linted via `lint-workflows.yml` (actionlint + zizmor).
+- Workflow files are linted via `lint-ci.yml` (actionlint + zizmor).
 - RPM/quadlet output is validated via `validate-rpm-quadlet.yml`.
 - TODO: matrix test invoking each action directly.
 

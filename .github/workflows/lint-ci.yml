@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
 
-name: lint-workflows
+name: lint-ci
 
 # Reusable workflow that lints GitHub Actions workflow files in the caller repo.
 # Runs actionlint (syntax / shellcheck / action-version sanity) and zizmor
