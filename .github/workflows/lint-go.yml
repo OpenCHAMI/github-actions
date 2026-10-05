@@ -7,7 +7,7 @@ name: lint-go
 # and separately verifies go.mod/go.sum are tidy by running the tidy
 # command and failing on a dirty diff.
 #
-# Pair with test-go for the unit-test half of the Go CI wave.
+# Pair with test-unit-go for the unit-test half of the Go CI wave.
 
 on:
   workflow_call:

@@ -23,7 +23,7 @@ Reusable GitHub Actions for CI/CD.
 - `.github/workflows/publish-release.yml`: Publishes the draft GitHub Release for a tag
 - `.github/workflows/lint-ci.yml`: Reusable workflow that lints workflow files (actionlint + zizmor)
 - `.github/workflows/lint-go.yml`: Reusable workflow that runs golangci-lint and checks go.mod/go.sum are tidy
-- `.github/workflows/test-go.yml`: Reusable workflow that runs Go unit tests, optionally reporting coverage to Coveralls
+- `.github/workflows/test-unit-go.yml`: Reusable workflow that runs Go unit tests, optionally reporting coverage to Coveralls
 - `.github/workflows/reuse.yml`: Reusable workflow that checks REUSE copyright/licensing compliance
 - `.github/workflows/govulncheck.yml`: Reusable workflow that scans Go modules for known CVEs
 - `.github/workflows/dependency-review.yml`: Reusable workflow that gates PRs introducing CVE-flagged deps
@@ -130,7 +130,7 @@ jobs:
     #   tidy-command: make mod
 ```
 
-### test-go (Reusable Workflow)
+### test-unit-go (Reusable Workflow)
 Runs `go test` with `test-args` (default `-race ./...`). Fetches tags so tests asserting on `git describe` version metadata behave as they do locally.
 
 With `coverage: true`, it also writes a coverage profile, reports the total in the job summary, and uploads the profile to Coveralls using the automatically-provided `GITHUB_TOKEN`. The caller repo must be enrolled in Coveralls.
@@ -145,7 +145,7 @@ on:
 
 jobs:
   test:
-    uses: OpenCHAMI/github-actions/.github/workflows/test-go.yml@v3.9
+    uses: OpenCHAMI/github-actions/.github/workflows/test-unit-go.yml@v3.12
     # Optional overrides:
     # with:
     #   go_version: stable          # mutually exclusive with go_version_file
