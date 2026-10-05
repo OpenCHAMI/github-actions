@@ -9,7 +9,6 @@ Reusable GitHub Actions for CI/CD.
 
 ## Structure
 
-- `actions/gpg-ephemeral-key`: **Deprecated** - use `actions/gpg-configure-release-keys` instead
 - `actions/gpg-configure-release-keys`: Generates and certifies a per-run ephemeral GPG key through the repo's release key chain
 - `actions/gpg-sign-rpm`: RPM signing with ephemeral keys
 - `actions/gpg-check-key-expiration`: Fails CI if a signing key is expired or expiring soon
@@ -355,9 +354,6 @@ jobs:
 ```
 
 ## Actions
-
-### gpg-ephemeral-key (Deprecated - use gpg-configure-release-keys)
-Generates a short-lived RSA key and signs it with a repo-scoped subkey. See the [action README](actions/gpg-ephemeral-key/README.md).
 
 ### gpg-configure-release-keys
 Generates a per-run ephemeral GPG key, certified through the repo's release key chain (master certifies a repo cert key, which certifies the ephemeral key). See the [action README](actions/gpg-configure-release-keys/README.md).
