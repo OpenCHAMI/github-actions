@@ -21,7 +21,6 @@ permissions:
 
 jobs:
   scorecard:
-    name: scorecard
     # Scorecard is a container action and needs a full-fat runner.
     runs-on: ubuntu-latest
     steps:

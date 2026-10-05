@@ -5,7 +5,6 @@
 # uploads it as an unsigned artifact for downstream signing.
 
 name: Build RPM for Podman Quadlet Files
-run-name: Create Podman Quadlet RPM for ${{ github.ref }}
 on:
   workflow_call:
     inputs:
@@ -24,7 +23,7 @@ jobs:
       image: rockylinux:9
     steps:
       - name: Install build dependencies
-        run: dnf install -y -q git make rpm-build rpmlint tar gzip
+        run: dnf install -y -q git make rpm-build rpmlint
 
       - name: Mark workspace as a safe git directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"

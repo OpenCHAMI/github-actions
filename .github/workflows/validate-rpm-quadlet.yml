@@ -5,7 +5,6 @@
 # against the set of files the caller expects it to ship.
 
 name: Validate Podman Quadlet RPM
-run-name: Validate Podman Quadlet RPM for ${{ github.ref }}
 on:
   workflow_call:
     inputs:

@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 name: GoReleaser
-run-name: GoReleaser ${{ (inputs.snapshot == 'true' || (inputs.snapshot != 'false' && !startsWith(github.ref, 'refs/tags/v'))) && 'Snapshot' || 'Release' }}
 
 on:
   workflow_call:

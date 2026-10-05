@@ -5,7 +5,6 @@
 # published, once that pull request closes.
 
 name: Cleanup PR Container Images
-run-name: Cleanup container images for PR ${{ inputs.pr-number }}
 on:
   workflow_call:
     inputs:

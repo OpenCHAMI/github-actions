@@ -4,7 +4,6 @@
 # Reusable workflow: publishes the draft GitHub Release for a tag once every
 # upstream job has finished attaching its artifacts.
 name: Publish release
-run-name: Publish release for ${{ github.ref }}
 permissions:
   contents: write
 on:
