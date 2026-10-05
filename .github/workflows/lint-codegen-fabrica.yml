@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: lint-codegen-fabrica
+
+# Reusable workflow that fails when a Fabrica project's committed generated
+# code has drifted, by running the caller's `make generate-check` with a
+# Fabrica built from source (passed as LOCAL_FABRICA). Fabrica stamps its
+# version into generated code and only a source build carries that version;
+# a `go run` build reports "dev" and always fails the check.
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: 'Go version to use (e.g. "1.26.7", "stable"). Mutually exclusive with go-version-file.'
+        required: false
+        type: string
+      go-version-file:
+        description: 'Path to a go.mod or .go-version file containing the Go version. Mutually exclusive with go-version.'
+        required: false
+        type: string
+      fabrica-ref:
+        description: 'Fabrica tag, branch, or commit SHA to build (default: version in go.mod)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read   # baseline for checkout
+
+jobs:
+  lint-codegen-fabrica:
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ inputs.go-version || (inputs.go-version-file == '' && 'stable' || '') }}
+          go-version-file: ${{ inputs.go-version-file || '' }}
+
+      - name: Resolve Fabrica ref
+        id: fabrica-ref
+        env:
+          FABRICA_REF: ${{ inputs.fabrica-ref }}
+        run: |
+          ref="$FABRICA_REF"
+          if [[ -z "$ref" ]]; then
+            ref=$(awk '/github.com\/openchami\/fabrica[[:space:]]+v/ {print $2; exit}' go.mod)
+          fi
+          if [[ -z "$ref" ]]; then
+            echo "::error::fabrica-ref not set and no github.com/openchami/fabrica version found in go.mod"
+            exit 1
+          fi
+          echo "Using Fabrica ref: ${ref}"
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+      - name: Checkout Fabrica
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openchami/fabrica
+          ref: ${{ steps.fabrica-ref.outputs.ref }}
+          path: fabrica
+          fetch-depth: 0   # full history + tags so `git describe` stamps the same version as a local build
+          persist-credentials: false
+      - name: Build Fabrica
+        working-directory: fabrica
+        run: make build
+
+      - name: Verify generated code is committed
+        run: make generate-check LOCAL_FABRICA="$GITHUB_WORKSPACE/fabrica"

@@ -31,6 +31,7 @@ Reusable GitHub Actions for CI/CD.
 - `.github/workflows/scorecard.yml`: Reusable workflow that runs the OpenSSF Scorecard supply-chain analysis
 - `.github/workflows/pr-registry-cleanup.yml`: Deletes the GHCR container images a PR published, once it closes
 - `.github/workflows/stale.yml`: Reusable workflow that marks and closes inactive issues and PRs (org-default policy)
+- `.github/workflows/lint-codegen-fabrica.yml`: Reusable workflow that fails when a Fabrica project's committed generated code is out of date
 
 ### Workflow naming
 
@@ -400,6 +401,27 @@ jobs:
     #   close-issue-message: ...
     #   stale-pr-message: ...
     #   close-pr-message: ...
+```
+
+### lint-codegen-fabrica (Reusable Workflow)
+Fails when a Fabrica project's committed generated code is out of date by running the caller's `make generate-check` with Fabrica built from source (passed as `LOCAL_FABRICA`), at the version pinned in `go.mod` unless `fabrica-ref` (tag, branch, or commit SHA) is set. A source build is required: Fabrica stamps its version into generated code, and a `go run` build reports `dev` instead.
+
+**Usage:**
+```yaml
+name: Lint Codegen
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint-codegen:
+    uses: OpenCHAMI/github-actions/.github/workflows/lint-codegen-fabrica.yml@v4.0
+    # Optional overrides:
+    # with:
+    #   go-version: stable          # mutually exclusive with go-version-file
+    #   go-version-file: go.mod
+    #   fabrica-ref: v0.4.5         # tag, branch, or SHA; default: version in go.mod
 ```
 
 ## Actions
