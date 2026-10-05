@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   lint:
-    uses: ./.github/workflows/lint-ci.yml
+    uses: $/.github/workflows/lint-ci.yml
     permissions:
       contents: read          # baseline for checkout
       security-events: write  # zizmor SARIF upload to GHAS
