@@ -8,7 +8,7 @@
 # Keep this file up to date and maintained as we add other package signing
 # tasks (e.g. .deb, Arch packages).
 
-name: GPG Sign artifacts
+name: gpg-sign-artifacts
 on:
   workflow_call:
     inputs:

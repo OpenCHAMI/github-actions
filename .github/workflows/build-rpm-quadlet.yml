@@ -4,7 +4,7 @@
 # Reusable workflow: builds the caller repo's podman quadlet RPM and
 # uploads it as an unsigned artifact for downstream signing.
 
-name: Build RPM for Podman Quadlet Files
+name: build-rpm-quadlet
 on:
   workflow_call:
     inputs:
@@ -17,7 +17,7 @@ permissions:
   contents: read   # baseline for checkout
 
 jobs:
-  rpmbuild:
+  rpm-build:
     runs-on: ubuntu-latest
     container:
       image: rockylinux:9

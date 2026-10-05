@@ -12,12 +12,12 @@ name: lint-go
 on:
   workflow_call:
     inputs:
-      go_version:
-        description: 'Go version to use (e.g. "1.26.7", "stable"). Mutually exclusive with go_version_file.'
+      go-version:
+        description: 'Go version to use (e.g. "1.26.7", "stable"). Mutually exclusive with go-version-file.'
         required: false
         type: string
-      go_version_file:
-        description: 'Path to a go.mod or .go-version file containing the Go version. Mutually exclusive with go_version.'
+      go-version-file:
+        description: 'Path to a go.mod or .go-version file containing the Go version. Mutually exclusive with go-version.'
         required: false
         type: string
       golangci-lint-version:
@@ -38,8 +38,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: ${{ inputs.go_version || (inputs.go_version_file == '' && 'stable' || '') }}
-          go-version-file: ${{ inputs.go_version_file || '' }}
+          go-version: ${{ inputs.go-version || (inputs.go-version-file == '' && 'stable' || '') }}
+          go-version-file: ${{ inputs.go-version-file || '' }}
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: ${{ inputs.golangci-lint-version }}
@@ -52,8 +52,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: ${{ inputs.go_version || (inputs.go_version_file == '' && 'stable' || '') }}
-          go-version-file: ${{ inputs.go_version_file || '' }}
+          go-version: ${{ inputs.go-version || (inputs.go-version-file == '' && 'stable' || '') }}
+          go-version-file: ${{ inputs.go-version-file || '' }}
       - name: Check go.mod and go.sum are tidy
         run: |
           go mod tidy

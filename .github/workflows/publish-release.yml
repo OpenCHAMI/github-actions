@@ -3,13 +3,13 @@
 #
 # Reusable workflow: publishes the draft GitHub Release for a tag once every
 # upstream job has finished attaching its artifacts.
-name: Publish release
+name: publish-release
 permissions:
   contents: write
 on:
   workflow_call:
     inputs:
-      make_latest:
+      make-latest:
         description: 'Mark the published release as the latest release. Use "legacy" to defer to GitHub'
         type: string
         default: 'true'
@@ -23,4 +23,4 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           draft: false
-          make_latest: ${{ inputs.make_latest }}
+          make_latest: ${{ inputs.make-latest }}

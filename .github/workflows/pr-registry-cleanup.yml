@@ -4,7 +4,7 @@
 # Reusable workflow: deletes the GHCR container image versions a pull request
 # published, once that pull request closes.
 
-name: Cleanup PR Container Images
+name: pr-registry-cleanup
 on:
   workflow_call:
     inputs:

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
 
-name: CI
+name: 0-local-ci
 
 # Local to this repo: CI for github-actions itself. Not a reusable workflow;
 # do not call it from other repos. See "Workflow naming" in the README.

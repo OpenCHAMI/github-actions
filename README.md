@@ -110,7 +110,7 @@ jobs:
 ```
 
 ### lint-go (Reusable Workflow)
-Lints the caller's Go module. Runs `golangci-lint`, and separately verifies `go.mod`/`go.sum` are tidy by running the tidy command and failing on a dirty diff. Uses Go `stable` unless the caller sets `go_version` or `go_version_file`. `golangci-lint` tracks `latest` unless pinned.
+Lints the caller's Go module. Runs `golangci-lint`, and separately verifies `go.mod`/`go.sum` are tidy by running the tidy command and failing on a dirty diff. Uses Go `stable` unless the caller sets `go-version` or `go-version-file`. `golangci-lint` tracks `latest` unless pinned.
 
 **Usage:**
 ```yaml
@@ -126,7 +126,7 @@ jobs:
     # Optional overrides:
     # with:
     #   golangci-lint-version: v2.13.2
-    #   go_version_file: go.mod
+    #   go-version-file: go.mod
     #   tidy-command: make mod
 ```
 
@@ -148,8 +148,8 @@ jobs:
     uses: OpenCHAMI/github-actions/.github/workflows/test-unit-go.yml@v3.12
     # Optional overrides:
     # with:
-    #   go_version: stable          # mutually exclusive with go_version_file
-    #   go_version_file: go.mod
+    #   go-version: stable          # mutually exclusive with go-version-file
+    #   go-version-file: go.mod
     #   test-args: -race -short ./...
     #   coverage: true
     #   coverage-file: coverage.out
@@ -250,9 +250,9 @@ jobs:
 ```
 
 ### build-publish-container-goreleaser (Reusable Workflow)
-Builds and publishes a container image via GoReleaser, with multi-arch builds, build provenance attestation, and PR snapshot support. Release builds (`is_pr_build: false`) pass GitHub's auto-generated release notes for the pushed tag to GoReleaser via `--release-notes`.
+Builds and publishes a container image via GoReleaser, with multi-arch builds, build provenance attestation, and PR snapshot support. Release builds (`is-pr-build: false`) pass GitHub's auto-generated release notes for the pushed tag to GoReleaser via `--release-notes`.
 
-Optional `build_deps` is a space-separated list of apt packages installed before the build, for cases such as CGO cross-compilation that need a toolchain not present on the runner.
+Optional `build-deps` is a space-separated list of apt packages installed before the build, for cases such as CGO cross-compilation that need a toolchain not present on the runner.
 
 **Usage:**
 ```yaml
@@ -260,10 +260,10 @@ jobs:
   build:
     uses: OpenCHAMI/github-actions/.github/workflows/build-publish-container-goreleaser.yml@v3.8
     with:
-      registry_subject_name: ghcr.io/openchami/foo
-      release_draft: false
-      cgo_enabled: 1
-      build_deps: gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+      registry-subject-name: ghcr.io/openchami/foo
+      release-draft: false
+      cgo-enabled: 1
+      build-deps: gcc-aarch64-linux-gnu libc6-dev-arm64-cross
 ```
 
 ### build-rpm-quadlet (Reusable Workflow)
@@ -311,11 +311,11 @@ jobs:
   release:
     uses: OpenCHAMI/github-actions/.github/workflows/release-signed-artifacts.yml@v3.8
     with:
-      release_draft: false
+      release-draft: false
 ```
 
 ### publish-release (Reusable Workflow)
-Publishes the draft GitHub Release for a tag, for pipelines that set `release_draft: true` upstream so the release only appears once every artifact is attached.
+Publishes the draft GitHub Release for a tag, for pipelines that set `release-draft: true` upstream so the release only appears once every artifact is attached.
 
 **Usage:**
 ```yaml
@@ -381,7 +381,7 @@ on:
         types: [opened, synchronize, reopened, edited]
     workflow_dispatch:
       inputs:
-        pr_number:
+        pr-number:
           description: 'PR Number to build (optional, for manual PR builds)'
           required: false
           type: string
@@ -408,10 +408,10 @@ jobs:
     uses: OpenCHAMI/github-actions/.github/workflows/build-publish-container-goreleaser.yml@v3.8
     secrets: inherit
     with:
-      cgo_enabled: 0
-      registry_subject_name: ghcr.io/openchami/metadata-service
-      is_pr_build: true
-      pr_number: ${{ inputs.pr_number || github.event.pull_request.number || 0 }}
+      cgo-enabled: 0
+      registry-subject-name: ghcr.io/openchami/metadata-service
+      is-pr-build: true
+      pr-number: ${{ inputs.pr-number || github.event.pull_request.number || 0 }}
 
   rpmbuild:
     needs: [config, build]

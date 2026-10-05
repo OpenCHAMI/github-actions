@@ -5,40 +5,40 @@
 # with multi-arch builds, build provenance attestation, and PR snapshot
 # support.
 
-name: Build and publish container using goreleaser
+name: build-publish-container-goreleaser
 on:
   workflow_call:
     inputs:
-      build_deps:
+      build-deps:
         type: string
         required: false
         description: 'Space-separated list of apt packages to install before building (e.g. "gcc-aarch64-linux-gnu libc6-dev-arm64-cross").'
-      cgo_enabled:
+      cgo-enabled:
         type: number
         required: false
         default: 0
-      go_version:
+      go-version:
         type: string
         required: false
-        description: 'Go version to use (e.g. "1.26.7", "stable"). Mutually exclusive with go_version_file.'
-      go_version_file:
+        description: 'Go version to use (e.g. "1.26.7", "stable"). Mutually exclusive with go-version-file.'
+      go-version-file:
         type: string
         required: false
-        description: 'Path to a go.mod or .go-version file containing the Go version. Mutually exclusive with go_version.'
-      release_draft:
+        description: 'Path to a go.mod or .go-version file containing the Go version. Mutually exclusive with go-version.'
+      release-draft:
         type: boolean
         required: false
         default: false
         description: 'Create the release as a draft, overriding release.draft in .goreleaser.yml'
-      is_pr_build:
+      is-pr-build:
         type: boolean
         required: false
         default: false
-      pr_number:
+      pr-number:
         type: number
         required: false
         default: ${{ github.event.number || 0 }}
-      registry_subject_name:
+      registry-subject-name:
         type: string
         required: true
 
@@ -49,7 +49,7 @@ permissions:
   attestations: write  # write build provenance attestations
 
 jobs:
-  container_build_publish:
+  container-build-publish:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -58,9 +58,9 @@ jobs:
           fetch-tags: true
           fetch-depth: 0
       - name: Install build dependencies
-        if: ${{ inputs.build_deps != '' }}
+        if: ${{ inputs.build-deps != '' }}
         env:
-          BUILD_DEPS: ${{ inputs.build_deps }}
+          BUILD_DEPS: ${{ inputs.build-deps }}
         run: |
           sudo apt update
           # shellcheck disable=SC2086 # intentional word splitting
@@ -68,8 +68,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6.4.0
         with:
-          go-version: ${{ inputs.go_version || (inputs.go_version_file == '' && 'stable' || '') }}
-          go-version-file: ${{ inputs.go_version_file || '' }}
+          go-version: ${{ inputs.go-version || (inputs.go-version-file == '' && 'stable' || '') }}
+          go-version-file: ${{ inputs.go-version-file || '' }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -107,17 +107,17 @@ jobs:
             echo "BUILD_HOST=$(hostname)"
             echo "GO_VERSION=$(go version | awk '{print $3}')"
             echo "BUILD_USER=$(whoami)"
-            echo "CGO_ENABLED=${{ inputs.cgo_enabled }}"
-            echo "IS_PR_BUILD=${{ inputs.is_pr_build }}"
+            echo "CGO_ENABLED=${{ inputs.cgo-enabled }}"
+            echo "IS_PR_BUILD=${{ inputs.is-pr-build }}"
           } >> "${GITHUB_ENV}"
       - name: Create Tag for PR
-        if: ${{ inputs.is_pr_build }}
+        if: ${{ inputs.is-pr-build }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f -a pr-${{ inputs.pr_number }} -m "PR Release"
+          git tag -f -a pr-${{ inputs.pr-number }} -m "PR Release"
       - name: Generate release notes
-        if: ${{ !inputs.is_pr_build }}
+        if: ${{ !inputs.is-pr-build }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" -F tag_name="${{ github.ref_name }}" --jq .body > ../notes.md
@@ -127,11 +127,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           version: '~> 2'
-          args: release --clean ${{ inputs.is_pr_build && '--skip=announce,validate,archive' || '' }}${{ env.SKIP_CONTAINER_PUBLISH == 'true' && (inputs.is_pr_build && ',publish' || '--skip=publish') || '' }} ${{ inputs.release_draft && '--draft' || '' }} ${{ !inputs.is_pr_build && '--release-notes ../notes.md' || '' }}
+          args: release --clean ${{ inputs.is-pr-build && '--skip=announce,validate,archive' || '' }}${{ env.SKIP_CONTAINER_PUBLISH == 'true' && (inputs.is-pr-build && ',publish' || '--skip=publish') || '' }} ${{ inputs.release-draft && '--draft' || '' }} ${{ !inputs.is-pr-build && '--release-notes ../notes.md' || '' }}
         id: goreleaser
       - name: Process goreleaser output
         if: env.SKIP_CONTAINER_PUBLISH == 'false'
-        id: process_goreleaser_output
+        id: process-goreleaser-output
         run: |
           node - <<'EOF'
           const fs = require('fs');
@@ -149,14 +149,14 @@ jobs:
             echo "digest=$(cat digest.txt)" >> "${GITHUB_OUTPUT}"
           fi
       - name: Attest Binaries
-        if: ${{ (env.SKIP_CONTAINER_PUBLISH == 'false') && (inputs.is_pr_build == false) }}
+        if: ${{ (env.SKIP_CONTAINER_PUBLISH == 'false') && (inputs.is-pr-build == false) }}
         uses: actions/attest-build-provenance@v4.1.0
         with:
           subject-path: dist/**
       - name: generate build provenance
-        if: ${{ (env.SKIP_CONTAINER_PUBLISH == 'false') && (inputs.is_pr_build == false) }}
+        if: ${{ (env.SKIP_CONTAINER_PUBLISH == 'false') && (inputs.is-pr-build == false) }}
         uses: actions/attest-build-provenance@v4.1.0
         with:
-          subject-name: ${{ inputs.registry_subject_name }}
-          subject-digest: ${{ steps.process_goreleaser_output.outputs.digest }}
+          subject-name: ${{ inputs.registry-subject-name }}
+          subject-digest: ${{ steps.process-goreleaser-output.outputs.digest }}
           push-to-registry: true

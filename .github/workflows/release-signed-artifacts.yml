@@ -4,7 +4,7 @@
 # Reusable workflow: publishes a GitHub Release for a tag, attaching signed
 # RPMs and public keys, with trust-chain verification instructions in the
 # release body.
-name: Release signed artifacts
+name: release-signed-artifacts
 permissions:
   contents: write   # create GitHub Release and upload artifacts
 on:
@@ -20,17 +20,17 @@ on:
         type: string
         default: 'public-keys'
         required: false
-      append_body:
+      append-body:
         description: 'Append the verification instructions to the existing release body instead of replacing it'
         type: boolean
         default: true
         required: false
-      release_draft:
+      release-draft:
         description: 'Leave the release in draft state'
         type: boolean
         default: false
         required: false
-      release_name:
+      release-name:
         description: 'Release title. When empty, the existing release name is kept'
         type: string
         default: ''
@@ -58,9 +58,9 @@ jobs:
         uses: softprops/action-gh-release@v3.0.2
         with:
           tag_name: ${{ github.ref_name }}
-          name: ${{ inputs.release_name }}
-          draft: ${{ inputs.release_draft }}
-          append_body: ${{ inputs.append_body }}
+          name: ${{ inputs.release-name }}
+          draft: ${{ inputs.release-draft }}
+          append_body: ${{ inputs.append-body }}
           fail_on_unmatched_files: true
           files: |
             dist/rpms/**/*.rpm
