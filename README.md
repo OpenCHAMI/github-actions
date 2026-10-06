@@ -63,7 +63,9 @@ Pin a commit SHA instead for maximum supply-chain safety if desired.
 
 `build-check-goreleaser` (build only), `build-release-goreleaser` (PR images or tag release), and `validate-packages` share the caller's `.goreleaser.yaml`. A release chains build-release → validate-packages → `publish-release`, so the draft goes public only after validation.
 
-The build workflows export `IS_PR_BUILD` and `GPG_KEY_PATH` (empty when unsigned) for the config, e.g. `release.disable` on `IS_PR_BUILD` and nfpm `key_file: '{{ .Env.GPG_KEY_PATH }}'`. For nfpm packages, list every directory too (`type: dir`) and use one entry per format (rpm/deb).
+The build workflows export `IS_PR_BUILD` and `GPG_KEY_PATH` (empty when unsigned) for the config, e.g. `release.disable` on `IS_PR_BUILD` and nfpm `key_file: '{{ .Env.GPG_KEY_PATH }}'`. For nfpm packages, list every directory too (`type: dir`) and set `release` and dependencies per format under `overrides`.
+
+See [`.goreleaser.example.yml`](.goreleaser.example.yml) for an annotated config covering binaries, archives, images, rpm/deb packages, signing, and the release.
 
 ### build-check-goreleaser (Reusable Workflow)
 Runs `goreleaser release --snapshot --clean`: builds binaries, archives, packages, and images, and publishes nothing. Read-only and secret-free, so it is safe for fork PRs. Uploads the packages, archives, and checksums as an artifact for `validate-packages`.

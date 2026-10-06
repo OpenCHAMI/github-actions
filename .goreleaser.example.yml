@@ -1,0 +1,329 @@
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+#
+# <your-repo>/.goreleaser.yaml
+#
+# =============================================================================
+# GoReleaser - Example Configuration for OpenCHAMI/github-actions
+# =============================================================================
+#
+# Reference config for the build-check-goreleaser, build-release-goreleaser,
+# and validate-packages reusable workflows. Copy it into your repo as
+# .goreleaser.yaml, rename `foo`, and keep the sections you need. Each section
+# notes which release effect it produces and links to the full reference.
+#
+# Release effect                     Section
+# ---------------------------------  ------------------------------------------
+# Binaries                           builds
+# Bare-metal tarballs + checksums    archives, checksum
+# Multi-arch container images        dockers_v2
+# :pr-<N> images on PRs              dockers_v2.tags (uses {{ .Tag }})
+# rpm / deb packages (incl. quadlet) nfpms
+# Package signing                    nfpms[].rpm.signature (GPG_KEY_PATH)
+# GitHub release + notes             release
+# Build provenance attestations      (workflow: `registry-subject-name` input)
+# GPG public key on the release      (workflow: derived from `gpg-key`)
+# Publishing to a yum/apt repository (out of scope; see below)
+#
+# Out of scope: GoReleaser only attaches packages to the GitHub release.
+# Publishing them to a package repository (yum/apt metadata, signed repomd) is
+# handled by a separate post-release workflow, which is easier to manage than
+# GoReleaser's `blob:` / `publishers:` (or Pro-only hosted integrations):
+# repository metadata spans all packages and releases, and publishing runs
+# only after validation and publish-release.
+#
+# Environment provided by the workflows (always set, so templates can rely on
+# them; set them yourself when running goreleaser locally):
+#
+#   IS_PR_BUILD    "true" on PR builds and build checks, "false" on releases
+#   GPG_KEY_PATH   path to the private key from the `gpg-key` secret on release
+#                  builds; empty otherwise (packages are then unsigned)
+#   GIT_STATE      "clean" or "dirty"
+#   BUILD_HOST     runner hostname
+#   GO_VERSION     `go version` output, e.g. go1.26.7
+#   BUILD_USER     runner user
+#
+# Mode behavior (set by the workflows, not this file):
+#   PR build      HEAD is tagged locally as `pr-<N>`, so {{ .Tag }} == "pr-<N>".
+#                 Images are pushed; archives, nfpm, and the release are skipped.
+#   Build check   `--snapshot`: everything is built, nothing is published.
+#   Release       `v*` tag push: everything is built and published; the release
+#                 is a draft with GitHub-generated notes (`--release-notes`).
+#
+# Template syntax and variables:
+#   https://goreleaser.com/customization/general/templates/
+#
+version: 2
+
+# Name used in archive/package/image names.
+#
+# Default: the repository name
+# Docs:    https://goreleaser.com/customization/general/project/
+project_name: foo
+
+# -------------------------------------------------------------------------
+# Pre-build hooks
+# -------------------------------------------------------------------------
+
+# Commands run once before building. Templates are allowed, which is how
+# packaged files get release-specific values (e.g. a quadlet's image tag).
+# Write generated files outside dist/ and gitignore them: GoReleaser refuses
+# to release from a dirty git tree.
+#
+# Docs: https://goreleaser.com/customization/general/hooks/
+before:
+  hooks:
+    - go mod tidy
+    # Pin the packaged quadlet to the image this run publishes
+    # (:vX.Y.Z on release, :pr-N on PR builds).
+    - make quadlet-render IMAGE_TAG={{ .Tag }}
+
+# -------------------------------------------------------------------------
+# Binaries
+# -------------------------------------------------------------------------
+
+# One entry per binary. Build metadata comes from the workflow environment.
+# CGO cross-compiles need a C cross toolchain: pass it to the workflows with
+# `build-deps` and `cgo-enabled`, and set CC per arch here.
+#
+# Docs: https://goreleaser.com/customization/builds/builders/go/
+builds:
+  - id: foo
+    main: ./cmd/foo
+    binary: foo
+    goos: [linux]
+    goarch: [amd64, arm64]
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - >-
+        -s -w
+        -X main.version={{ .Version }}
+        -X main.commit={{ .Commit }}
+        -X main.date={{ .Date }}
+        -X main.gitState={{ .Env.GIT_STATE }}
+        -X main.buildHost={{ .Env.BUILD_HOST }}
+        -X main.goVersion={{ .Env.GO_VERSION }}
+        -X main.buildUser={{ .Env.BUILD_USER }}
+
+# -------------------------------------------------------------------------
+# Bare-metal tarballs and checksums
+# -------------------------------------------------------------------------
+
+# Tarballs of the binaries, attached to the release.
+#
+# Docs: https://goreleaser.com/customization/package/archives/
+archives:
+  - id: foo
+    ids: [foo]
+    formats: [tar.gz]
+    files:
+      - LICENSES/*
+      - README.md
+
+# Checksums for every release file.
+#
+# Docs: https://goreleaser.com/customization/package/checksum/
+checksum:
+  name_template: "{{ .ProjectName }}_checksums.txt"
+
+# -------------------------------------------------------------------------
+# Container images
+# -------------------------------------------------------------------------
+
+# One multi-platform image per entry, pushed by buildx. The Dockerfile copies
+# prebuilt binaries from the build context:
+#
+#   FROM gcr.io/distroless/static
+#   ARG TARGETPLATFORM
+#   COPY $TARGETPLATFORM/foo /usr/bin/foo
+#   ENTRYPOINT ["/usr/bin/foo"]
+#
+# Tags that render empty are skipped, which keeps `latest` and the semver
+# shortcuts off PR builds. Pass the image name to build-release-goreleaser as
+# `registry-subject-name` to attest it.
+#
+# Docs: https://goreleaser.com/customization/package/dockers_v2/
+dockers_v2:
+  - id: foo
+    ids: [foo]
+    dockerfile: Dockerfile
+    images:
+      - ghcr.io/openchami/foo
+    tags:
+      - "{{ .Tag }}"                                   # vX.Y.Z or pr-N
+      - '{{ if ne .Env.IS_PR_BUILD "true" }}{{ .Major }}.{{ .Minor }}{{ end }}'
+      - '{{ if ne .Env.IS_PR_BUILD "true" }}{{ .Major }}{{ end }}'
+      - '{{ if ne .Env.IS_PR_BUILD "true" }}latest{{ end }}'
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+    extra_files:
+      - LICENSES/MIT.txt
+
+# -------------------------------------------------------------------------
+# rpm / deb packages
+# -------------------------------------------------------------------------
+
+# Packages are built with nfpm (no spec file, no rpmbuild). One entry can
+# produce both rpm and deb: `release`, `dependencies`, and `suggests` are set
+# per format under `overrides`. Keep `contents` at the top level and mark
+# single-format files with `packager:`, because `overrides.<format>.contents`
+# replaces the whole list.
+#
+# `release` is a literal string: no templates, no env vars, and rpm macros
+# such as %{?dist} are stored verbatim. Nothing is detected from the build
+# host. Set the dist suffix yourself (e.g. "1.el9").
+#
+# List every file AND directory the package creates (`type: dir`), so rpm
+# owns them and removes them on erase. validate-packages compares the exact
+# file list: rpm lists include owned directories, deb lists only files.
+#
+# nfpm content types (`type:`): config, config|noreplace, dir, license, doc,
+# ghost, symlink.
+#
+# Targeting several EL or Debian/Ubuntu releases: add one entry per target
+# with a unique `id` and its own `release` (e.g. "1.el9", "1.el10"; deb
+# "1~deb12", "1~ubuntu24.04"), sharing the rest by anchoring the first list
+# item (`- &quadlet` ... `- <<: *quadlet`; GoReleaser rejects top-level `x-`
+# keys). That suits noarch packages and CGO_ENABLED=0 binaries. cgo binaries
+# must be built against each release's glibc instead: run one build per
+# release in CI (e.g. in an EL container) with a rendered config. With several
+# entries, the filenames must differ, hence `file_name_template` below. GitHub
+# release assets turn `~` into `.`, which breaks checksums, so strip `~` from
+# the filename if a release uses it.
+#
+# Docs: https://goreleaser.com/customization/package/nfpm/
+#       https://nfpm.goreleaser.com/docs/configuration/
+#       https://github.com/goreleaser/goreleaser/blob/main/internal/pipe/nfpm/nfpm.go
+nfpms:
+  - id: foo-quadlet
+    package_name: foo-quadlet
+    # Packages only the listed contents; no binaries.
+    meta: true
+    formats: [rpm, deb]
+    # Standard names: rpm `name-version-release.arch.rpm`, deb
+    # `name_version-release_arch.deb`. The default omits `release`.
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: OpenCHAMI
+    homepage: https://www.openchami.org
+    maintainer: "Jane Doe <jdoe@openchami.org>"
+    description: Podman Quadlet unit files for running foo.
+    license: MIT
+    section: admin
+    contents:
+      - dst: /etc/openchami
+        type: dir
+      - dst: /etc/openchami/configs
+        type: dir
+      # Point at real files: nfpm packages a symlink source as a symlink.
+      - src: packaging/configs/foo.yaml
+        dst: /etc/openchami/configs/foo.yaml
+        type: "config|noreplace"
+      # Rendered by the `before` hook.
+      - src: build/quadlet/foo.container
+        dst: /usr/share/containers/systemd/foo.container
+      - dst: /usr/share/containers/systemd/foo.container.d
+        type: dir
+      - src: packaging/systemd/foo.container.d/10-defaults.conf
+        dst: /usr/share/containers/systemd/foo.container.d/10-defaults.conf
+      # License: %license under /usr/share/licenses for rpm ...
+      - dst: /usr/share/licenses/foo-quadlet
+        type: dir
+        packager: rpm
+      - src: LICENSES/MIT.txt
+        dst: /usr/share/licenses/foo-quadlet/MIT.txt
+        type: license
+        packager: rpm
+      # ... and a machine-readable copyright file for deb:
+      # https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+      - src: packaging/deb/copyright
+        dst: /usr/share/doc/foo-quadlet/copyright
+        packager: deb
+    # One script per hook serves both formats by branching on $1: rpm passes
+    # the instance count (1 = install, 2+ = upgrade, 0 = erase), deb an action
+    # (configure, remove, upgrade, ...; old version in $2 on upgrade). e.g.
+    #
+    #   case "$1" in
+    #       configure) [ -n "$2" ] && upgrade=1 ;;    # deb
+    #       [0-9]*)    [ "$1" -ge 2 ] && upgrade=1 ;; # rpm
+    #   esac
+    #
+    # https://docs.fedoraproject.org/en-US/packaging-guidelines/Scriptlets/
+    # https://www.debian.org/doc/debian-policy/ch-maintainerscripts.html
+    scripts:
+      postinstall: packaging/scripts/postinstall.sh
+      preremove: packaging/scripts/preremove.sh
+      postremove: packaging/scripts/postremove.sh
+    overrides:
+      rpm:
+        release: "1.el9"
+        # RPM dependency syntax:
+        # https://rpm-software-management.github.io/rpm/manual/dependencies.html
+        dependencies:
+          - podman >= 5.0.0
+          - systemd
+        suggests:
+          - smd-quadlet >= 2.20.0
+      deb:
+        release: "1"
+        # Debian dependency syntax:
+        # https://www.debian.org/doc/debian-policy/ch-relationships.html
+        dependencies:
+          - podman (>= 5.0.0)
+          - systemd
+        suggests:
+          - smd-quadlet (>= 2.20.0)
+    rpm:
+      # Signed only when GPG_KEY_PATH is set (release builds with the
+      # `gpg-key` secret); the passphrase comes from NFPM_PASSPHRASE, which
+      # the workflow fills from `gpg-key-passphrase`. The matching public key
+      # is attached to the release and checked by validate-packages.
+      # Docs: https://goreleaser.com/customization/package/nfpm/#signing-key-passphrases
+      signature:
+        key_file: "{{ .Env.GPG_KEY_PATH }}"
+
+# -------------------------------------------------------------------------
+# GitHub release
+# -------------------------------------------------------------------------
+
+# The workflows control draft state and notes: build-release-goreleaser passes
+# `--draft` (input `release-draft`, default true; publish later with
+# publish-release) and GitHub's generated notes via `--release-notes`
+# (input `generate-release-notes`), which replace the changelog below.
+# `header` / `footer` are added around those notes.
+#
+# Docs: https://goreleaser.com/customization/publish/scm/
+release:
+  # No GitHub release for PR builds.
+  disable: '{{ if eq .Env.IS_PR_BUILD "true" }}true{{ else }}false{{ end }}'
+  name_template: "v{{ .Version }}"
+  # Marks vX.Y.Z-rc1 and similar tags as prereleases.
+  prerelease: auto
+  footer: |
+    ## Verifying packages
+
+    ```bash
+    rpm --import gpg-public-key.asc
+    rpm -K foo-quadlet-*.rpm
+    ```
+
+# Used only when no `--release-notes` file is passed. `use: git` needs no API
+# token; `github-native` matches GitHub's own notes but calls the API.
+#
+# Default: git
+# Docs:    https://goreleaser.com/customization/publish/changelog/
+changelog:
+  use: git
+
+# Version used by build checks (`--snapshot`).
+#
+# Default: "{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}"
+# Docs:    https://goreleaser.com/customization/publish/snapshots/
+#snapshot:
+#  version_template: "{{ incpatch .Version }}-devel"
