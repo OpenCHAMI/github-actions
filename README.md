@@ -9,7 +9,6 @@ Reusable GitHub Actions for CI/CD.
 
 ## Structure
 
-- `actions/gpg-ephemeral-key`: **Deprecated** - use `actions/gpg-configure-release-keys` instead
 - `actions/gpg-configure-release-keys`: Generates and certifies a per-run ephemeral GPG key through the repo's release key chain
 - `actions/gpg-sign-rpm`: RPM signing with ephemeral keys
 - `actions/gpg-check-key-expiration`: Fails CI if a signing key is expired or expiring soon
@@ -22,10 +21,9 @@ Reusable GitHub Actions for CI/CD.
 - `.github/workflows/validate-rpm-quadlet.yml`: Validates a signed quadlet RPM's installed file list
 - `.github/workflows/release-signed-artifacts.yml`: Publishes a GitHub Release with signed RPMs and public keys
 - `.github/workflows/publish-release.yml`: Publishes the draft GitHub Release for a tag
-- `.github/workflows/lint-workflows.yml`: Reusable workflow that lints workflow files (actionlint + zizmor)
+- `.github/workflows/lint-ci.yml`: Reusable workflow that lints workflow files (actionlint + zizmor)
 - `.github/workflows/lint-go.yml`: Reusable workflow that runs golangci-lint and checks go.mod/go.sum are tidy
-- `.github/workflows/test-go.yml`: Reusable workflow that runs Go unit tests
-- `.github/workflows/coverage-go.yml`: Reusable workflow that reports Go coverage and uploads it to Coveralls
+- `.github/workflows/test-unit-go.yml`: Reusable workflow that runs Go unit tests, optionally reporting coverage to Coveralls
 - `.github/workflows/reuse.yml`: Reusable workflow that checks REUSE copyright/licensing compliance
 - `.github/workflows/govulncheck.yml`: Reusable workflow that scans Go modules for known CVEs
 - `.github/workflows/dependency-review.yml`: Reusable workflow that gates PRs introducing CVE-flagged deps
@@ -33,22 +31,27 @@ Reusable GitHub Actions for CI/CD.
 - `.github/workflows/scorecard.yml`: Reusable workflow that runs the OpenSSF Scorecard supply-chain analysis
 - `.github/workflows/pr-registry-cleanup.yml`: Deletes the GHCR container images a PR published, once it closes
 
+### Workflow naming
+
+`0-local-*` workflows are this repo's own CI, not reusable workflows. The `0`
+just sorts them to the top.
+
 ## Versioning & Usage
 
-Use major version tags for stability:
+Pin a release tag:
 
 ```yaml
 # For actions
-- uses: OpenCHAMI/github-actions/actions/gpg-configure-release-keys@v3.8
-- uses: OpenCHAMI/github-actions/actions/gpg-sign-rpm@v3.8
+- uses: OpenCHAMI/github-actions/actions/gpg-configure-release-keys@v4.0
+- uses: OpenCHAMI/github-actions/actions/gpg-sign-rpm@v4.0
 
 # For reusable workflows
 jobs:
   release:
-    uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v4.0
 ```
 
-Pin a commit SHA internally for maximum supply-chain safety if desired.
+Pin a commit SHA instead for maximum supply-chain safety if desired.
 
 ## Workflows
 
@@ -56,7 +59,7 @@ Pin a commit SHA internally for maximum supply-chain safety if desired.
 Standardized GoReleaser workflow for building and releasing Go applications with:
 - Multi-architecture builds (linux/amd64, linux/arm64)
 - Flexible pre-build setup steps
-- Wraps `goreleaser-action` action with all .gorelease.yaml configurations
+- Wraps `goreleaser-action` action with all .goreleaser.yaml configurations
 - Container image builds and publishing
 - Binary and container attestation/signing
 - Snapshot builds on pull requests
@@ -76,7 +79,7 @@ on:
 jobs:
   goreleaser:
     name: GoReleaser ${{ startsWith(github.ref, 'refs/tags/v') && 'Release' || 'Snapshot' }}
-    uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/go-build-release.yml@v4.0
     with:
       pre-build-commands: |
         go install github.com/swaggo/swag/cmd/swag@latest
@@ -87,7 +90,7 @@ jobs:
 
 See the [workflow](.github/workflows/go-build-release.yml) for additional input parameters.
 
-### lint-workflows (Reusable Workflow)
+### lint-ci (Reusable Workflow)
 Lints the caller repo's GitHub Actions workflow files.
 
 - **actionlint** - syntax validation, shellcheck on `run:` steps, deprecated-action checks.
@@ -95,7 +98,7 @@ Lints the caller repo's GitHub Actions workflow files.
 
 **Usage:**
 ```yaml
-name: Lint Workflows
+name: Lint CI
 on:
   pull_request:
   push:
@@ -103,11 +106,11 @@ on:
 
 jobs:
   lint:
-    uses: OpenCHAMI/github-actions/.github/workflows/lint-workflows.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/lint-ci.yml@v4.0
 ```
 
 ### lint-go (Reusable Workflow)
-Lints the caller's Go module. Runs `golangci-lint`, and separately verifies `go.mod`/`go.sum` are tidy by running the tidy command and failing on a dirty diff. Uses Go `stable` unless the caller sets `go_version` or `go_version_file`. `golangci-lint` tracks `latest` unless pinned.
+Lints the caller's Go module. Runs `golangci-lint`, and separately verifies `go.mod`/`go.sum` are tidy by running the tidy command and failing on a dirty diff. Uses Go `stable` unless the caller sets `go-version` or `go-version-file`. `golangci-lint` tracks `latest` unless pinned.
 
 **Usage:**
 ```yaml
@@ -119,16 +122,17 @@ on:
 
 jobs:
   lint:
-    uses: OpenCHAMI/github-actions/.github/workflows/lint-go.yml@v3.9
+    uses: OpenCHAMI/github-actions/.github/workflows/lint-go.yml@v4.0
     # Optional overrides:
     # with:
     #   golangci-lint-version: v2.13.2
-    #   go_version_file: go.mod
-    #   tidy-command: make mod
+    #   go-version-file: go.mod
 ```
 
-### test-go (Reusable Workflow)
-Runs the caller's Go unit tests. Fetches tags so tests asserting on `git describe` version metadata behave as they do locally.
+### test-unit-go (Reusable Workflow)
+Runs `go test` with `test-args`, one argument per line without shell quotes (default `-race` and `./...`). Fetches tags so tests asserting on `git describe` version metadata behave as they do locally.
+
+With `coverage: true`, it also writes a coverage profile, reports the total in the job summary, and uploads the profile to Coveralls using the automatically-provided `GITHUB_TOKEN`. The caller repo must be enrolled in Coveralls.
 
 **Usage:**
 ```yaml
@@ -140,31 +144,17 @@ on:
 
 jobs:
   test:
-    uses: OpenCHAMI/github-actions/.github/workflows/test-go.yml@v3.9
+    uses: OpenCHAMI/github-actions/.github/workflows/test-unit-go.yml@v4.0
     # Optional overrides:
     # with:
-    #   go_version_file: go.mod
-    #   test-command: make test
-```
-
-### coverage-go (Reusable Workflow)
-Produces a Go coverage profile, writes the total to the job summary, and uploads the profile to Coveralls using the automatically-provided `GITHUB_TOKEN`. The caller repo must be enrolled in Coveralls.
-
-**Usage:**
-```yaml
-name: Coverage
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-jobs:
-  coverage:
-    uses: OpenCHAMI/github-actions/.github/workflows/coverage-go.yml@v3.9
-    # Optional overrides:
-    # with:
-    #   go_version_file: go.mod
-    #   coverage-command: make coverage
+    #   go-version: stable          # mutually exclusive with go-version-file
+    #   go-version-file: go.mod
+    #   test-args: |-
+    #     -race
+    #     -short
+    #     ./...
+    #   coverage: true
+    #   coverage-file: coverage.out
 ```
 
 ### reuse (Reusable Workflow)
@@ -180,7 +170,10 @@ on:
 
 jobs:
   reuse:
-    uses: OpenCHAMI/github-actions/.github/workflows/reuse.yml@v3.9
+    uses: OpenCHAMI/github-actions/.github/workflows/reuse.yml@v4.0
+    # Optional overrides:
+    # with:
+    #   reuse-version: 6.2.0
 ```
 
 ### govulncheck (Reusable Workflow)
@@ -198,7 +191,11 @@ on:
 
 jobs:
   govulncheck:
-    uses: OpenCHAMI/github-actions/.github/workflows/govulncheck.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/govulncheck.yml@v4.0
+    # Optional overrides:
+    # with:
+    #   go-version: 1.26.7  # default: read from go.mod
+    #   go-package: ./cmd/...
 ```
 
 ### dependency-review (Reusable Workflow)
@@ -212,29 +209,35 @@ on:
 
 jobs:
   dependency-review:
-    uses: OpenCHAMI/github-actions/.github/workflows/dependency-review.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/dependency-review.yml@v4.0
     # Optional overrides:
     # with:
     #   fail-on-severity: moderate
     #   deny-licenses: GPL-3.0,AGPL-3.0
+    #   allow-licenses: MIT,Apache-2.0
+    #   comment-summary-in-pr: always  # always | on-failure | never
 ```
 
 ### trivy-image-scan (Reusable Workflow)
-Scans an already-pushed container image with Trivy and uploads SARIF findings to GitHub Advanced Security. Designed to chain after `docker-build-release` with a digest-pinned image reference.
+Scans an already-pushed container image with Trivy and uploads SARIF findings to GitHub Advanced Security. Designed to chain after `docker-build-release` by scanning an image tag it pushed (`docker-build-release` tags by branch, git tag, or `pr-<number>`).
 
 **Usage:**
 ```yaml
 jobs:
   build:
-    uses: OpenCHAMI/github-actions/.github/workflows/docker-build-release.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/docker-build-release.yml@v4.0
     with:
       registry-name: ghcr.io/openchami/foo
 
   scan:
     needs: build
-    uses: OpenCHAMI/github-actions/.github/workflows/trivy-image-scan.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/trivy-image-scan.yml@v4.0
     with:
-      image-ref: ghcr.io/openchami/foo:${{ github.sha }}
+      image-ref: ghcr.io/openchami/foo:${{ github.ref_name }}  # on a tag push
+      # Optional overrides:
+      # severity: CRITICAL
+      # ignore-unfixed: true
+      # exit-code: '0'  # report only
 ```
 
 ### scorecard (Reusable Workflow)
@@ -258,24 +261,24 @@ permissions:
 
 jobs:
   scorecard:
-    uses: OpenCHAMI/github-actions/.github/workflows/scorecard.yml@v3.9
+    uses: OpenCHAMI/github-actions/.github/workflows/scorecard.yml@v4.0
 ```
 
 ### build-publish-container-goreleaser (Reusable Workflow)
-Builds and publishes a container image via GoReleaser, with multi-arch builds, build provenance attestation, and PR snapshot support. Release builds (`is_pr_build: false`) pass GitHub's auto-generated release notes for the pushed tag to GoReleaser via `--release-notes`.
+Builds and publishes a container image via GoReleaser, with multi-arch builds, build provenance attestation, and PR snapshot support. Release builds (`is-pr-build: false`) pass GitHub's auto-generated release notes for the pushed tag to GoReleaser via `--release-notes`.
 
-Optional `build_deps` is a space-separated list of apt packages installed before the build, for cases such as CGO cross-compilation that need a toolchain not present on the runner.
+Optional `build-deps` is a space-separated list of apt packages installed before the build, for cases such as CGO cross-compilation that need a toolchain not present on the runner.
 
 **Usage:**
 ```yaml
 jobs:
   build:
-    uses: OpenCHAMI/github-actions/.github/workflows/build-publish-container-goreleaser.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/build-publish-container-goreleaser.yml@v4.0
     with:
-      registry_subject_name: ghcr.io/openchami/foo
-      release_draft: false
-      cgo_enabled: 1
-      build_deps: gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+      registry-subject-name: ghcr.io/openchami/foo
+      release-draft: false
+      cgo-enabled: 1
+      build-deps: gcc-aarch64-linux-gnu libc6-dev-arm64-cross
 ```
 
 ### build-rpm-quadlet (Reusable Workflow)
@@ -285,7 +288,10 @@ Builds the caller repo's podman quadlet RPM and uploads it as an unsigned artifa
 ```yaml
 jobs:
   build:
-    uses: OpenCHAMI/github-actions/.github/workflows/build-rpm-quadlet.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/build-rpm-quadlet.yml@v4.0
+    # Optional overrides:
+    # with:
+    #   artifact-name-unsigned-rpms: rpms-unsigned
 ```
 
 ### gpg-sign-artifacts (Reusable Workflow)
@@ -295,7 +301,7 @@ Signs unsigned RPM artifacts with a per-run ephemeral key certified through the 
 ```yaml
 jobs:
   sign:
-    uses: OpenCHAMI/github-actions/.github/workflows/gpg-sign-artifacts.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/gpg-sign-artifacts.yml@v4.0
     secrets: inherit
 ```
 
@@ -306,8 +312,9 @@ Validates a signed quadlet RPM's installed file list against the set of files th
 ```yaml
 jobs:
   validate:
-    uses: OpenCHAMI/github-actions/.github/workflows/validate-rpm-quadlet.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/validate-rpm-quadlet.yml@v4.0
     with:
+      # artifact-name-signed-rpms: rpms-signed  # optional
       rpms: |
         - name: foo-*.rpm
           files:
@@ -321,20 +328,24 @@ Publishes a GitHub Release for a tag, attaching signed RPMs and public keys, wit
 ```yaml
 jobs:
   release:
-    uses: OpenCHAMI/github-actions/.github/workflows/release-signed-artifacts.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/release-signed-artifacts.yml@v4.0
     with:
-      release_draft: false
+      release-draft: false
 ```
 
 ### publish-release (Reusable Workflow)
-Publishes the draft GitHub Release for a tag, for pipelines that set `release_draft: true` upstream so the release only appears once every artifact is attached.
+Publishes the draft GitHub Release for a tag, for pipelines that set `release-draft: true` upstream so the release only appears once every artifact is attached.
 
 **Usage:**
 ```yaml
 jobs:
   publish:
     needs: release
-    uses: OpenCHAMI/github-actions/.github/workflows/publish-release.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/publish-release.yml@v4.0
+    # Optional overrides:
+    # with:
+    #   make-latest: true  # true | false | legacy (default)
+    #   draft: true
 ```
 
 ### pr-registry-cleanup (Reusable Workflow)
@@ -349,15 +360,16 @@ on:
 
 jobs:
   cleanup:
-    uses: OpenCHAMI/github-actions/.github/workflows/pr-registry-cleanup.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/pr-registry-cleanup.yml@v4.0
     permissions:
       packages: write
+    # Optional overrides:
+    # with:
+    #   pr-number: 123
+    #   tag-prefix: pr-
 ```
 
 ## Actions
-
-### gpg-ephemeral-key (Deprecated - use gpg-configure-release-keys)
-Generates a short-lived RSA key and signs it with a repo-scoped subkey. See the [action README](actions/gpg-ephemeral-key/README.md).
 
 ### gpg-configure-release-keys
 Generates a per-run ephemeral GPG key, certified through the repo's release key chain (master certifies a repo cert key, which certifies the ephemeral key). See the [action README](actions/gpg-configure-release-keys/README.md).
@@ -396,12 +408,13 @@ on:
         types: [opened, synchronize, reopened, edited]
     workflow_dispatch:
       inputs:
-        pr_number:
+        pr-number:
           description: 'PR Number to build (optional, for manual PR builds)'
           required: false
           type: string
 
-permissions: write-all # Necessary for the generate-build-provenance action with containers
+permissions:
+  contents: read   # baseline; jobs that need more request it below
 jobs:
 
   config:
@@ -420,33 +433,38 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   build:
-    uses: OpenCHAMI/github-actions/.github/workflows/build-publish-container-goreleaser.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/build-publish-container-goreleaser.yml@v4.0
     secrets: inherit
+    permissions:
+      contents: write      # release creation, uploading assets
+      packages: write      # image push, container provenance
+      id-token: write      # Sigstore signing (attest-build-provenance)
+      attestations: write  # build provenance attestations
     with:
-      cgo_enabled: 0
-      registry_subject_name: ghcr.io/openchami/metadata-service
-      is_pr_build: true
-      pr_number: ${{ inputs.pr_number || github.event.pull_request.number || 0 }}
+      cgo-enabled: 0
+      registry-subject-name: ghcr.io/openchami/metadata-service
+      is-pr-build: true
+      pr-number: ${{ inputs.pr-number || github.event.pull_request.number || 0 }}
 
-  rpmbuild:
+  rpm-build:
     needs: [config, build]
-    uses: OpenCHAMI/github-actions/.github/workflows/build-rpm-quadlet.yml@v3.8
+    uses: OpenCHAMI/github-actions/.github/workflows/build-rpm-quadlet.yml@v4.0
     secrets: inherit
     with:
       artifact-name-unsigned-rpms: ${{ needs.config.outputs.rpm-unsigned }}
 
-  rpmsign:
-    needs: [config, rpmbuild]
-    uses: OpenCHAMI/github-actions/.github/workflows/gpg-sign-artifacts.yml@v3.8
+  rpm-sign:
+    needs: [config, rpm-build]
+    uses: OpenCHAMI/github-actions/.github/workflows/gpg-sign-artifacts.yml@v4.0
     secrets: inherit
     with:
       artifact-name-unsigned-rpms: ${{ needs.config.outputs.rpm-unsigned }}
       artifact-name-signed-rpms:   ${{ needs.config.outputs.rpm-signed }}
       artifact-name-public-keys:   ${{ needs.config.outputs.keys-public }}
 
-  rpmvalidate:
-    needs: [config, rpmsign]
-    uses: OpenCHAMI/github-actions/.github/workflows/validate-rpm-quadlet.yml@v3.8
+  rpm-validate:
+    needs: [config, rpm-sign]
+    uses: OpenCHAMI/github-actions/.github/workflows/validate-rpm-quadlet.yml@v4.0
     secrets: inherit
     with:
       artifact-name-signed-rpms:   ${{ needs.config.outputs.rpm-signed }}
@@ -461,7 +479,7 @@ jobs:
 
 ## Continuous Integration
 
-- Workflow files are linted via `lint-workflows.yml` (actionlint + zizmor).
+- Workflow files are linted via `0-local-ci.yml`, which calls `lint-ci.yml` (actionlint + zizmor).
 - RPM/quadlet output is validated via `validate-rpm-quadlet.yml`.
 - TODO: matrix test invoking each action directly.
 

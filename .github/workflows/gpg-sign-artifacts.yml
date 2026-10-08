@@ -8,8 +8,7 @@
 # Keep this file up to date and maintained as we add other package signing
 # tasks (e.g. .deb, Arch packages).
 
-name: GPG Sign artifacts
-run-name: Create signed artifacts for ${{ github.ref }}
+name: gpg-sign-artifacts
 on:
   workflow_call:
     inputs:
@@ -38,7 +37,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          dnf install -y -q git make rpm-build rpmlint tar gzip
+          dnf install -y -q git rpmlint
 
       - name: Mark workspace as a safe git directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"

@@ -1,11 +1,10 @@
-# Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
 #
 # Reusable workflow: validates a signed quadlet RPM's installed file list
 # against the set of files the caller expects it to ship.
 
-name: Validate Podman Quadlet RPM
-run-name: Validate Podman Quadlet RPM for ${{ github.ref }}
+name: validate-rpm-quadlet
 on:
   workflow_call:
     inputs:
@@ -23,7 +22,7 @@ permissions:
 
 jobs:
   parse:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       matrix: ${{ steps.parse.outputs.matrix }}
     steps:
@@ -33,31 +32,22 @@ jobs:
           RPMS: ${{ inputs.rpms }}
         run: echo "matrix=$(yq -o=json -I=0 '.' <<< "$RPMS")" >> "$GITHUB_OUTPUT"
 
-  rpmvalidate:
+  rpm-validate:
     needs: parse
     name: validate (${{ matrix.rpm.name }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     strategy:
       fail-fast: false
       matrix:
         rpm: ${{ fromJSON(needs.parse.outputs.matrix) }}
-    container:
-      image: rockylinux:9
     steps:
-
-      - name: Install build dependencies
-        run: dnf install -y -q git rpmlint tar gzip diffutils jq
-
-      - name: Mark workspace as a safe git directory
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-tags: true
           fetch-depth: 0
 
       - name: Download signed RPM artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ inputs.artifact-name-signed-rpms }}
           path: dist/rpms

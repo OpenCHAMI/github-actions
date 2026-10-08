@@ -1,11 +1,10 @@
-# Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
 #
 # Reusable workflow: builds the caller repo's podman quadlet RPM and
 # uploads it as an unsigned artifact for downstream signing.
 
-name: Build RPM for Podman Quadlet Files
-run-name: Create Podman Quadlet RPM for ${{ github.ref }}
+name: build-rpm-quadlet
 on:
   workflow_call:
     inputs:
@@ -18,19 +17,19 @@ permissions:
   contents: read   # baseline for checkout
 
 jobs:
-  rpmbuild:
+  rpm-build:
     runs-on: ubuntu-latest
     container:
       image: rockylinux:9
     steps:
       - name: Install build dependencies
-        run: dnf install -y -q git make rpm-build rpmlint tar gzip
+        run: dnf install -y -q git make rpm-build rpmlint
 
       - name: Mark workspace as a safe git directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-tags: true
           fetch-depth: 0
@@ -39,7 +38,7 @@ jobs:
         run: make rpm-build
 
       - name: Upload RPM
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.artifact-name-unsigned-rpms }}
           path: '**/*.rpm'

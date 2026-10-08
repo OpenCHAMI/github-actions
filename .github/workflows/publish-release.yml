@@ -1,27 +1,42 @@
-# Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
 #
 # Reusable workflow: publishes the draft GitHub Release for a tag once every
 # upstream job has finished attaching its artifacts.
-name: Publish release
-run-name: Publish release for ${{ github.ref }}
+name: publish-release
 permissions:
-  contents: write
+  contents: write   # publish the draft GitHub Release
 on:
   workflow_call:
     inputs:
-      make_latest:
-        description: 'Mark the published release as the latest release. Use "legacy" to defer to GitHub'
+      make-latest:
+        description: 'Mark the published release as the latest release: true, false, or legacy (GitHub picks by date and semver)'
         type: string
-        default: 'true'
+        # see this comment for details:
+        # https://github.com/OpenCHAMI/github-actions/pull/38#discussion_r4213262488
+        default: 'legacy'
+        required: false
+      draft:
+        description: 'Leave the release in draft state'
+        type: boolean
+        default: false
         required: false
 jobs:
   publish-release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     steps:
       - name: Publish release
-        uses: softprops/action-gh-release@v3.0.2
-        with:
-          tag_name: ${{ github.ref_name }}
-          draft: false
-          make_latest: ${{ inputs.make_latest }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          DRAFT: ${{ inputs.draft }}
+          MAKE_LATEST: ${{ inputs.make-latest }}
+        run: |
+          release_id=$(gh release view "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json databaseId --jq '.databaseId')
+
+          gh api --method PATCH \
+            "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            -F "draft=$DRAFT" \
+            -f "make_latest=$MAKE_LATEST"
