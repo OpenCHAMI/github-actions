@@ -10,9 +10,11 @@ on:
   workflow_call:
     inputs:
       make-latest:
-        description: 'Mark the published release as the latest release. Use "legacy" to defer to GitHub'
+        description: 'Mark the published release as the latest release: true, false, or legacy (GitHub picks by date and semver)'
         type: string
-        default: 'true'
+        # see this comment for details:
+        # https://github.com/OpenCHAMI/github-actions/pull/38#discussion_r4213262488
+        default: 'legacy'
         required: false
       draft:
         description: 'Leave the release in draft state'
@@ -30,6 +32,11 @@ jobs:
           DRAFT: ${{ inputs.draft }}
           MAKE_LATEST: ${{ inputs.make-latest }}
         run: |
-          latest=()
-          [[ "$MAKE_LATEST" != legacy ]] && latest=(--latest="$MAKE_LATEST")
-          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft="$DRAFT" "${latest[@]}"
+          release_id=$(gh release view "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json databaseId --jq '.databaseId')
+
+          gh api --method PATCH \
+            "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            -F "draft=$DRAFT" \
+            -f "make_latest=$MAKE_LATEST"

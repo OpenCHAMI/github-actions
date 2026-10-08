@@ -341,7 +341,7 @@ jobs:
     uses: OpenCHAMI/github-actions/.github/workflows/publish-release.yml@v4.0
     # Optional overrides:
     # with:
-    #   make-latest: legacy  # true | false | legacy
+    #   make-latest: true  # true | false | legacy (default)
     #   draft: true
 ```
 
