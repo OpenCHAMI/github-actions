@@ -48,7 +48,11 @@ jobs:
         run: |
           ref="$FABRICA_REF"
           if [[ -z "$ref" ]]; then
-            ref=$(awk '/github.com\/openchami\/fabrica[[:space:]]+v/ {print $2; exit}' go.mod)
+            ref=$(go mod edit -json | jq -r '
+              .Require[]?
+              | select(.Path == "github.com/openchami/fabrica")
+              | .Version
+            ')
           fi
           if [[ -z "$ref" ]]; then
             echo "::error::fabrica-ref not set and no github.com/openchami/fabrica version found in go.mod"
