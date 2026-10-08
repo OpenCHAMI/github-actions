@@ -48,15 +48,17 @@ jobs:
         run: |
           ref="$FABRICA_REF"
           if [[ -z "$ref" ]]; then
-            ref=$(go mod edit -json | jq -r '
+            version=$(go mod edit -json | jq -r '
               .Require[]?
               | select(.Path == "github.com/openchami/fabrica")
               | .Version
             ')
-          fi
-          if [[ -z "$ref" ]]; then
-            echo "::error::fabrica-ref not set and no github.com/openchami/fabrica version found in go.mod"
-            exit 1
+            if [[ -z "$version" ]]; then
+              echo "::error::fabrica-ref not set and no github.com/openchami/fabrica version found in go.mod"
+              exit 1
+            fi
+            # Resolve the tag or pseudo-version to the commit it names
+            ref=$(go list -mod=mod -m -json "github.com/openchami/fabrica@${version}" | jq -r '.Origin.Hash')
           fi
           echo "Using Fabrica ref: ${ref}"
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
