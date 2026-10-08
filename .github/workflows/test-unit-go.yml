@@ -22,11 +22,15 @@ on:
         description: 'Path to a go.mod or .go-version file containing the Go version. Mutually exclusive with go-version.'
         required: false
         type: string
+      # see comment for details:
+      # https://github.com/OpenCHAMI/github-actions/pull/38#discussion_r4213283911
       test-args:
-        description: 'Arguments passed to `go test` (flags and packages)'
+        description: 'Arguments passed to `go test` (flags and packages), one per line; do not add shell quotes'
         required: false
         type: string
-        default: '-race ./...'
+        default: |-
+          -race
+          ./...
       coverage:
         description: 'Write a coverage profile, report the total, and upload it to Coveralls'
         required: false
@@ -60,12 +64,16 @@ jobs:
           COVERAGE: ${{ inputs.coverage }}
           COVERAGE_FILE: ${{ inputs.coverage-file }}
         run: |
+          test_args=()
+          while IFS= read -r arg || [[ -n "$arg" ]]; do
+            test_args+=("$arg")
+          done < <(printf '%s' "$TEST_ARGS")
+
           cover_args=()
           if [[ "$COVERAGE" == 'true' ]]; then
             cover_args=("-coverprofile=${COVERAGE_FILE}")
           fi
-          # shellcheck disable=SC2086 # intentional word splitting
-          go test $TEST_ARGS "${cover_args[@]}"
+          go test "${cover_args[@]}" "${test_args[@]}"
 
       - name: Report total coverage
         if: ${{ inputs.coverage }}

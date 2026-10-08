@@ -130,7 +130,7 @@ jobs:
 ```
 
 ### test-unit-go (Reusable Workflow)
-Runs `go test` with `test-args` (default `-race ./...`). Fetches tags so tests asserting on `git describe` version metadata behave as they do locally.
+Runs `go test` with `test-args`, one argument per line without shell quotes (default `-race` and `./...`). Fetches tags so tests asserting on `git describe` version metadata behave as they do locally.
 
 With `coverage: true`, it also writes a coverage profile, reports the total in the job summary, and uploads the profile to Coveralls using the automatically-provided `GITHUB_TOKEN`. The caller repo must be enrolled in Coveralls.
 
@@ -149,7 +149,10 @@ jobs:
     # with:
     #   go-version: stable          # mutually exclusive with go-version-file
     #   go-version-file: go.mod
-    #   test-args: -race -short ./...
+    #   test-args: |-
+    #     -race
+    #     -short
+    #     ./...
     #   coverage: true
     #   coverage-file: coverage.out
 ```
