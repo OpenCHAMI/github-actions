@@ -67,6 +67,8 @@ jobs:
       - name: Build Fabrica
         working-directory: fabrica
         run: make build
-
       - name: Verify generated code is committed
-        run: make generate-check LOCAL_FABRICA="$GITHUB_WORKSPACE/fabrica"
+        run: |
+          make generate-check \
+            LOCAL_FABRICA="$GITHUB_WORKSPACE/fabrica" \
+            FABRICA_SOURCE_ARG="--fabrica-source $GITHUB_WORKSPACE/fabrica --force"
