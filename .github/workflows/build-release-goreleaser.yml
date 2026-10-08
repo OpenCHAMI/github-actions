@@ -1,0 +1,314 @@
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: build-release-goreleaser
+
+# Reusable workflow that runs the caller's GoReleaser config in one of two
+# modes, chosen from the triggering event (no manual override; any other
+# trigger fails fast):
+#
+# - PR (`pull_request` event): tags HEAD locally as `pr-<number>` and pushes
+#   the resulting images (e.g. `:pr-12`). No GitHub release, no packages
+#   (nfpm is skipped; use build-check-goreleaser to validate PR packages), no
+#   signing, no attestation. Fork PRs build but publish nothing.
+# - Release (`v*` tag push): semver images, (optionally signed) packages, a
+#   GitHub release (draft by default) with GitHub-generated notes, and build
+#   provenance attestations for the binaries and the image digest.
+#
+# Contract with the caller's .goreleaser.yaml: these environment variables
+# are always set (empty when unused), so templates can reference them:
+#   GIT_STATE, BUILD_HOST, GO_VERSION, BUILD_USER, IS_PR_BUILD, GPG_KEY_PATH
+# Packages are signed when `key_file: "{{ .Env.GPG_KEY_PATH }}"` is set in
+# the nfpm config and the `gpg-key` secret is passed (release mode only). The
+# matching public key is derived from it, attached to the release as
+# gpg-public-key.asc, and included in the dist artifact, where
+# validate-packages picks it up to verify signatures.
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: 'Go version to use (e.g. "1.26.7", "stable"). Mutually exclusive with go-version-file.'
+        required: false
+        type: string
+      go-version-file:
+        description: 'Path to a go.mod or .go-version file containing the Go version. Mutually exclusive with go-version.'
+        required: false
+        type: string
+      goreleaser-version:
+        description: 'GoReleaser version to run'
+        required: false
+        type: string
+        default: 'v2.18.2'
+      build-deps:
+        description: 'Space-separated apt packages to install before building (e.g. "gcc-aarch64-linux-gnu libc6-dev-arm64-cross")'
+        required: false
+        type: string
+        default: ''
+      cgo-enabled:
+        description: 'Value for CGO_ENABLED'
+        required: false
+        type: number
+        default: 0
+      release-draft:
+        description: 'Create the GitHub release as a draft (publish it later with publish-release)'
+        required: false
+        type: boolean
+        default: true
+      generate-release-notes:
+        description: "Pass GitHub's generated release notes for the tag to GoReleaser (`--release-notes`)"
+        required: false
+        type: boolean
+        default: true
+      registry-subject-name:
+        description: 'Image name (e.g. ghcr.io/openchami/foo) to attest by digest; empty skips image attestation'
+        required: false
+        type: string
+        default: ''
+      attestation-subject-path:
+        description: 'Glob of release files to attest'
+        required: false
+        type: string
+        default: 'dist/**'
+      goreleaser-args:
+        description: 'Extra arguments appended to `goreleaser release`'
+        required: false
+        type: string
+        default: ''
+      dist-artifact-name:
+        description: 'Artifact name for the packages, archives, and checksums in dist/ (e.g. for validate-packages)'
+        required: false
+        type: string
+        default: 'goreleaser-dist'
+    secrets:
+      gpg-key:
+        description: 'ASCII-armored (or base64-encoded armored) private key for package signing; release mode only'
+        required: false
+      gpg-key-passphrase:
+        description: 'Passphrase for gpg-key (handed to nfpm as NFPM_PASSPHRASE)'
+        required: false
+    outputs:
+      version:
+        description: 'Version GoReleaser built'
+        value: ${{ jobs.build-release-goreleaser.outputs.version }}
+      digest:
+        description: 'Image digest (manifest when present), empty if no image was published'
+        value: ${{ jobs.build-release-goreleaser.outputs.digest }}
+
+permissions:
+  contents: write      # release creation, uploading assets
+  packages: write      # image push, container provenance
+  id-token: write      # Sigstore signing (attest-build-provenance)
+  attestations: write  # build provenance attestations
+
+jobs:
+  build-release-goreleaser:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      digest: ${{ steps.metadata.outputs.digest }}
+    env:
+      IS_PR_BUILD: ${{ github.event_name == 'pull_request' }}
+      # Fork PRs get a read-only token: build, but publish nothing.
+      SKIP_PUBLISH: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+    steps:
+      - name: Check trigger
+        if: ${{ github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          echo "::error::build-release-goreleaser runs on pull_request (PR images) or a v* tag push (release); got ${EVENT} on ${REF}"
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: Install build dependencies
+        if: ${{ inputs.build-deps != '' }}
+        env:
+          BUILD_DEPS: ${{ inputs.build-deps }}
+        run: |
+          sudo apt-get update
+          # shellcheck disable=SC2086 # intentional word splitting
+          sudo apt-get install -y --no-install-recommends ${BUILD_DEPS}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ inputs.go-version || (inputs.go-version-file == '' && 'stable' || '') }}
+          go-version-file: ${{ inputs.go-version-file || '' }}
+          cache: false   # published artifacts must not come from a poisonable cache
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Warn on fork PR
+        if: ${{ env.SKIP_PUBLISH == 'true' }}
+        run: echo "::warning title=Fork PR - publish skipped::Images are built but not pushed for fork PRs (read-only token)."
+      - name: Log in to GHCR
+        if: ${{ env.SKIP_PUBLISH == 'false' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set build environment
+        id: build-env
+        run: |
+          git_state=dirty
+          if git diff-index --quiet HEAD -- >/dev/null 2>&1; then
+            git_state=clean
+          fi
+          {
+            echo "git-state=${git_state}"
+            echo "build-host=$(hostname)"
+            echo "go-version=$(go version | awk '{print $3}')"
+            echo "build-user=$(whoami)"
+          } >> "$GITHUB_OUTPUT"
+      - name: Create PR tag
+        if: ${{ env.IS_PR_BUILD == 'true' }}
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f -a "pr-${PR_NUMBER}" -m "PR build"
+      - name: Generate release notes
+        if: ${{ env.IS_PR_BUILD == 'false' && inputs.generate-release-notes }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -F tag_name="${TAG}" --jq .body > "${RUNNER_TEMP}/release-notes.md"
+      - name: Prepare GPG key
+        id: signing
+        if: ${{ env.IS_PR_BUILD == 'false' }}
+        env:
+          GPG_KEY: ${{ secrets.gpg-key }}
+        run: |
+          if [[ -z "$GPG_KEY" ]]; then
+            echo "No gpg-key secret; packages will not be signed."
+            echo "key-path=" >> "$GITHUB_OUTPUT"
+            echo "public-key-path=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          key="${RUNNER_TEMP}/gpg-key.asc"
+          umask 077
+          if [[ "$GPG_KEY" == *"-----BEGIN PGP PRIVATE KEY BLOCK-----"* ]]; then
+            printf '%s\n' "$GPG_KEY" > "$key"
+          else
+            printf '%s' "$GPG_KEY" | base64 -d > "$key"
+          fi
+          # Derive the public key for the release and for signature checks.
+          # Importing a secret key doesn't need its passphrase.
+          pub="${RUNNER_TEMP}/gpg-public-key.asc"
+          gnupg=$(mktemp -d)
+          gpg --homedir "$gnupg" --batch --quiet --import "$key"
+          gpg --homedir "$gnupg" --batch --armor --export > "$pub"
+          rm -rf "$gnupg"
+          test -s "$pub"
+          {
+            echo "key-path=${key}"
+            echo "public-key-path=${pub}"
+          } >> "$GITHUB_OUTPUT"
+      - name: Assemble GoReleaser arguments
+        id: args
+        env:
+          RELEASE_DRAFT: ${{ inputs.release-draft }}
+          GENERATE_NOTES: ${{ inputs.generate-release-notes }}
+          EXTRA_ARGS: ${{ inputs.goreleaser-args }}
+        run: |
+          args="release --clean"
+          if [[ "$IS_PR_BUILD" == true ]]; then
+            # nfpm: package versions can't be derived from a `pr-<N>` tag (deb
+            # requires a leading digit). Validate PR packages with
+            # build-check-goreleaser (snapshot) instead.
+            skip="announce,validate,archive,nfpm"
+            [[ "$SKIP_PUBLISH" == true ]] && skip+=",publish"
+            args+=" --skip=${skip}"
+          else
+            [[ "$SKIP_PUBLISH" == true ]] && args+=" --skip=publish"
+            [[ "$RELEASE_DRAFT" == true ]] && args+=" --draft"
+            [[ "$GENERATE_NOTES" == true ]] && args+=" --release-notes ${RUNNER_TEMP}/release-notes.md"
+          fi
+          [[ -n "$EXTRA_ARGS" ]] && args+=" ${EXTRA_ARGS}"
+          echo "GoReleaser arguments: ${args}"
+          echo "args=${args}" >> "$GITHUB_OUTPUT"
+      - name: Run GoReleaser
+        id: goreleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CGO_ENABLED: ${{ inputs.cgo-enabled }}
+          GIT_STATE: ${{ steps.build-env.outputs.git-state }}
+          BUILD_HOST: ${{ steps.build-env.outputs.build-host }}
+          GO_VERSION: ${{ steps.build-env.outputs.go-version }}
+          BUILD_USER: ${{ steps.build-env.outputs.build-user }}
+          GPG_KEY_PATH: ${{ steps.signing.outputs.key-path }}
+          # GPG key passphrase. The name is fixed by nfpm, which only reads the
+          # passphrase from NFPM_[ID_][FORMAT_]PASSPHRASE.
+          NFPM_PASSPHRASE: ${{ github.event_name != 'pull_request' && secrets.gpg-key-passphrase || '' }}
+        with:
+          distribution: goreleaser
+          version: ${{ inputs.goreleaser-version }}
+          args: ${{ steps.args.outputs.args }}
+      - name: Remove GPG key
+        if: ${{ always() && steps.signing.outputs.key-path != '' }}
+        env:
+          KEY_PATH: ${{ steps.signing.outputs.key-path }}
+        run: shred -u "$KEY_PATH" 2>/dev/null || rm -f "$KEY_PATH"
+
+      - name: Read GoReleaser metadata
+        id: metadata
+        env:
+          METADATA: ${{ steps.goreleaser.outputs.metadata }}
+          ARTIFACTS: ${{ steps.goreleaser.outputs.artifacts }}
+        run: |
+          version=$(jq -r '.version // empty' <<< "$METADATA")
+          # Prefer the multi-arch manifest, then a dockers_v2 image, then a
+          # single published image.
+          digest=$(jq -r '
+            [.[] | select(.extra.Digest != null)] as $a
+            | ([$a[] | select(.type == "Docker Manifest")]
+               + [$a[] | select(.type == "Docker Image")]
+               + [$a[] | select(.type == "Published Docker Image")])[0].extra.Digest // empty
+          ' <<< "$ARTIFACTS")
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "version=${version} digest=${digest:-<none>}"
+      - name: Attest binaries
+        if: ${{ env.IS_PR_BUILD == 'false' && env.SKIP_PUBLISH == 'false' }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ inputs.attestation-subject-path }}
+      - name: Attest image
+        if: ${{ env.IS_PR_BUILD == 'false' && env.SKIP_PUBLISH == 'false' && inputs.registry-subject-name != '' && steps.metadata.outputs.digest != '' }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ inputs.registry-subject-name }}
+          subject-digest: ${{ steps.metadata.outputs.digest }}
+          push-to-registry: true
+      - name: Publish GPG public key
+        if: ${{ steps.signing.outputs.public-key-path != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PUBLIC_KEY_PATH: ${{ steps.signing.outputs.public-key-path }}
+        run: |
+          cp "$PUBLIC_KEY_PATH" dist/gpg-public-key.asc
+          if [[ "$SKIP_PUBLISH" == false ]]; then
+            gh release upload "$TAG" dist/gpg-public-key.asc --clobber --repo "$GITHUB_REPOSITORY"
+          fi
+
+      - name: Upload dist
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.dist-artifact-name }}
+          path: |
+            dist/*.rpm
+            dist/*.deb
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*checksums.txt
+            dist/gpg-public-key.asc
+          if-no-files-found: warn

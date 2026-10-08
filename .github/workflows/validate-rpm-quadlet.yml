@@ -1,6 +1,14 @@
 # SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
 #
+# ############################################################################
+# #  DEPRECATED WORKFLOW -- DO NOT USE IN NEW CALLERS
+# #
+# #  validate-rpm-quadlet is replaced by validate-packages.yml.
+# #  It is kept only so callers pinned to older refs keep working, and will be
+# #  removed in a future major release. See README.md for migration notes.
+# ############################################################################
+#
 # Reusable workflow: validates a signed quadlet RPM's installed file list
 # against the set of files the caller expects it to ship.
 
@@ -26,6 +34,9 @@ jobs:
     outputs:
       matrix: ${{ steps.parse.outputs.matrix }}
     steps:
+      - name: Deprecation warning
+        run: |
+          echo "::warning title=Deprecated workflow::validate-rpm-quadlet.yml is deprecated; migrate to validate-packages.yml."
       - name: Parse RPM specs
         id: parse
         env:
@@ -41,6 +52,9 @@ jobs:
       matrix:
         rpm: ${{ fromJSON(needs.parse.outputs.matrix) }}
     steps:
+      - name: Deprecation warning
+        run: |
+          echo "::warning title=Deprecated workflow::validate-rpm-quadlet.yml is deprecated; migrate to validate-packages.yml."
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-tags: true

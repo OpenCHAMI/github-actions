@@ -5,6 +5,9 @@ SPDX-License-Identifier: MIT
 
 # gpg-configure-release-keys
 
+> [!CAUTION]
+> **Deprecated.** Replaced by nfpm package signing in build-release-goreleaser.yml (gpg-key secret). Kept only for callers pinned to older refs; it will be removed in a future major release.
+
 Creates a per-run ephemeral GPG key and certifies it with a repo-scoped
 certification key, for use by downstream signing steps.
 

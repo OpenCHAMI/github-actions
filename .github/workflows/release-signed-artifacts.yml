@@ -1,6 +1,14 @@
 # Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
 #
+# ############################################################################
+# #  DEPRECATED WORKFLOW -- DO NOT USE IN NEW CALLERS
+# #
+# #  release-signed-artifacts is replaced by the GoReleaser release created by build-release-goreleaser.yml.
+# #  It is kept only so callers pinned to older refs keep working, and will be
+# #  removed in a future major release. See README.md for migration notes.
+# ############################################################################
+#
 # Reusable workflow: publishes a GitHub Release for a tag, attaching signed
 # RPMs and public keys, with trust-chain verification instructions in the
 # release body.
@@ -39,6 +47,9 @@ jobs:
   artifacts-release:
     runs-on: ubuntu-slim
     steps:
+      - name: Deprecation warning
+        run: |
+          echo "::warning title=Deprecated workflow::release-signed-artifacts.yml is deprecated; migrate to the GoReleaser release created by build-release-goreleaser.yml."
       - name: Checkout
         uses: actions/checkout@v6.0.2
         with:

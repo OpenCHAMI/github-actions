@@ -1,0 +1,186 @@
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: validate-packages
+
+# Reusable workflow that validates the rpm/deb packages produced by
+# build-check-goreleaser or build-release-goreleaser (their dist artifact).
+# For each package it checks, inside a matching distro container:
+#
+# - the file list is exactly what the caller expects (rpm: `rpm -qlp`,
+#   including owned directories; deb: regular files and symlinks only, since
+#   dpkg owns parent directories implicitly)
+# - the rpm signature verifies against the gpg-public-key.asc that
+#   build-release-goreleaser puts in the artifact when it signs (skipped when
+#   absent, e.g. PR/check builds or no gpg-key)
+# - the package installs (`dnf install` / `apt-get install`), which resolves
+#   dependencies and runs scriptlets, and every expected path exists afterward
+# - rpmlint / lintian, report-only
+
+on:
+  workflow_call:
+    inputs:
+      packages:
+        description: 'YAML list of package specs, each with a `name` glob ending in .rpm or .deb and a `files` list'
+        required: true
+        type: string
+      dist-artifact-name:
+        description: 'Artifact holding the packages (from build-check-goreleaser / build-release-goreleaser)'
+        required: false
+        type: string
+        default: 'goreleaser-dist'
+      rpm-image:
+        description: 'Container image used to validate .rpm packages'
+        required: false
+        type: string
+        default: 'docker.io/library/rockylinux:9'
+      deb-image:
+        description: 'Container image used to validate .deb packages'
+        required: false
+        type: string
+        default: 'docker.io/library/debian:13'
+      lint:
+        description: 'Run rpmlint / lintian (report-only)'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read   # baseline for checkout
+
+jobs:
+  parse:
+    runs-on: ubuntu-slim
+    outputs:
+      matrix: ${{ steps.parse.outputs.matrix }}
+    steps:
+      - name: Parse package specs
+        id: parse
+        env:
+          PACKAGES: ${{ inputs.packages }}
+          RPM_IMAGE: ${{ inputs.rpm-image }}
+          DEB_IMAGE: ${{ inputs.deb-image }}
+        run: |
+          set -euo pipefail
+          matrix=$(yq -o=json -I=0 '.' <<< "$PACKAGES" | jq -c --arg rpm "$RPM_IMAGE" --arg deb "$DEB_IMAGE" '
+            map(. + {image: (
+              if (.name | test("\\.rpm$")) then $rpm
+              elif (.name | test("\\.deb$")) then $deb
+              else error("package name must end in .rpm or .deb: \(.name)") end)})')
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+
+  validate:
+    needs: parse
+    name: validate (${{ matrix.package.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.parse.outputs.matrix) }}
+    container:
+      image: ${{ matrix.package.image }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.dist-artifact-name }}
+          path: dist
+
+      - name: Find package
+        env:
+          PKG_NAME: ${{ matrix.package.name }}
+        run: |
+          set -euo pipefail
+          # PKG_NAME is a glob; sort makes the pick deterministic if it
+          # matches more than one file.
+          pkg=$(find dist -type f -name "${PKG_NAME}" | sort | head -n 1)
+          if [[ -z "$pkg" ]]; then
+            echo "::error::no package in dist matches ${PKG_NAME}"
+            exit 1
+          fi
+          case "$pkg" in
+            *.rpm) format=rpm ;;
+            *.deb) format=deb ;;
+          esac
+          echo "using ${pkg} (${format})"
+          {
+            echo "PKG=${pkg}"
+            echo "PKG_FORMAT=${format}"
+          } >> "$GITHUB_ENV"
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          if [[ "$PKG_FORMAT" == rpm ]]; then
+            dnf install -y -q jq diffutils
+          else
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq jq
+          fi
+
+      - name: Verify file list is exactly what's expected
+        env:
+          FILES: ${{ toJSON(matrix.package.files) }}
+        run: |
+          set -euo pipefail
+          if [[ "$PKG_FORMAT" == rpm ]]; then
+            rpm -qlp --nosignature "$PKG" | sort | grep -v '^$' > /tmp/actual-files.txt
+          else
+            dpkg-deb --fsys-tarfile "$PKG" | tar -t | sed 's|^\./|/|' | grep -v '/$' | sort | grep -v '^$' > /tmp/actual-files.txt
+          fi
+          jq -r '.[]' <<< "$FILES" | sort | grep -v '^$' > /tmp/expected-files.txt
+          diff /tmp/expected-files.txt /tmp/actual-files.txt
+
+      - name: Verify signature
+        run: |
+          set -euo pipefail
+          key=dist/gpg-public-key.asc
+          if [[ ! -f "$key" ]]; then
+            echo "::notice::no gpg-public-key.asc in the artifact (unsigned build); signature not checked"
+            exit 0
+          fi
+          if [[ "$PKG_FORMAT" != rpm ]]; then
+            echo "::notice::deb packages are not signature-checked"
+            exit 0
+          fi
+          rpm --import "$key"
+          out=$(rpm -K "$PKG")
+          echo "$out"
+          grep -q 'signatures OK' <<< "$out"
+
+      - name: Install package
+        run: |
+          set -euo pipefail
+          if [[ "$PKG_FORMAT" == rpm ]]; then
+            dnf install -y "./${PKG}"
+          else
+            DEBIAN_FRONTEND=noninteractive apt-get install -y "./${PKG}"
+          fi
+          # Every expected path must exist after install (catches e.g. dangling
+          # symlinks packaged in place of files).
+          missing=0
+          while IFS= read -r f; do
+            [[ -z "$f" ]] && continue
+            if [[ ! -e "$f" ]]; then
+              echo "::error::installed path missing or dangling: ${f}"
+              missing=1
+            fi
+          done < /tmp/expected-files.txt
+          exit "$missing"
+
+      - name: Lint package (report-only)
+        if: ${{ inputs.lint }}
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          if [[ "$PKG_FORMAT" == rpm ]]; then
+            dnf install -y -q epel-release && dnf install -y -q rpmlint
+            rpmlint "$PKG"
+          else
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq lintian
+            lintian "$PKG"
+          fi
