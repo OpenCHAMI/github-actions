@@ -30,6 +30,8 @@ Reusable GitHub Actions for CI/CD.
 - `.github/workflows/trivy-image-scan.yml`: Reusable workflow that scans built container images for CVEs
 - `.github/workflows/scorecard.yml`: Reusable workflow that runs the OpenSSF Scorecard supply-chain analysis
 - `.github/workflows/pr-registry-cleanup.yml`: Deletes the GHCR container images a PR published, once it closes
+- `.github/workflows/stale.yml`: Reusable workflow that marks and closes inactive issues and PRs (org-default policy)
+- `.github/workflows/lint-codegen-fabrica.yml`: Reusable workflow that fails when a Fabrica project's committed generated code is out of date
 
 ### Workflow naming
 
@@ -367,6 +369,59 @@ jobs:
     # with:
     #   pr-number: 123
     #   tag-prefix: pr-
+```
+
+### stale (Reusable Workflow)
+Marks issues and PRs stale after a period of inactivity and closes them if nothing changes, using the org-default `actions/stale` policy (stale after 35 days, closed 7 days later; `pinned`/`security` items exempt). Updating an item removes the stale label. The caller owns the schedule.
+
+**Usage:**
+```yaml
+name: Stale
+on:
+  schedule:
+    - cron: '23 3 * * *'  # daily at 03:23 UTC
+  workflow_dispatch:
+
+jobs:
+  stale:
+    uses: OpenCHAMI/github-actions/.github/workflows/stale.yml@v4.0
+    permissions:
+      issues: write
+      pull-requests: write
+    # Optional overrides:
+    # with:
+    #   days-before-stale: 35
+    #   days-before-close: 7
+    #   stale-issue-label: stale
+    #   stale-pr-label: stale
+    #   exempt-issue-labels: pinned,security,help wanted
+    #   exempt-pr-labels: pinned,security
+    #   operations-per-run: 500
+    #   stale-issue-message: ...
+    #   close-issue-message: ...
+    #   stale-pr-message: ...
+    #   close-pr-message: ...
+```
+
+### lint-codegen-fabrica (Reusable Workflow)
+Fails when a Fabrica project's committed generated code is out of date by running the caller's `make generate-check` with Fabrica built from source (passed as `LOCAL_FABRICA`), at the version pinned in `go.mod` unless `fabrica-ref` (tag, branch, or commit SHA) is set. A source build is required: Fabrica stamps its version into generated code, and a `go run` build reports `dev` instead.
+
+**Usage:**
+```yaml
+name: Lint Codegen
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint-codegen:
+    uses: OpenCHAMI/github-actions/.github/workflows/lint-codegen-fabrica.yml@v4.0
+    # Optional overrides:
+    # with:
+    #   go-version: stable          # mutually exclusive with go-version-file
+    #   go-version-file: go.mod
+    #   fabrica-ref: v0.4.5         # tag, branch, or SHA; default: version in go.mod
 ```
 
 ## Actions
