@@ -18,6 +18,15 @@
       ],
       "depNameTemplate": "renovate",
       "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "Digest-pinned container image defaults in reusable workflow inputs",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "default: '(?<depName>docker\\.io/[^:']+):(?<currentValue>[^@']+)@(?<currentDigest>sha256:[a-f0-9]{64})'"
+      ],
+      "datasourceTemplate": "docker"
     }
   ]
 }

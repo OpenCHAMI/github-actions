@@ -33,12 +33,12 @@ on:
         description: 'Container image used to validate .rpm packages'
         required: false
         type: string
-        default: 'docker.io/library/rockylinux:9'
+        default: 'docker.io/library/rockylinux:9@sha256:d7be1c094cc5845ee815d4632fe377514ee6ebcf8efaed6892889657e5ddaaa6'
       deb-image:
         description: 'Container image used to validate .deb packages'
         required: false
         type: string
-        default: 'docker.io/library/debian:13'
+        default: 'docker.io/library/debian:13@sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5'
       lint:
         description: 'Run rpmlint / lintian (report-only)'
         required: false
@@ -107,7 +107,7 @@ jobs:
       matrix:
         package: ${{ fromJSON(needs.parse.outputs.matrix) }}
     container:
-      image: ${{ matrix.package.format == 'rpm' && inputs.rpm-image || inputs.deb-image }}
+      image: ${{ matrix.package.format == 'rpm' && inputs.rpm-image || inputs.deb-image }}  # zizmor: ignore[unpinned-images] defaults are digest-pinned; overrides are the caller's
     defaults:
       run:
         shell: bash
