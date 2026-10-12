@@ -7,9 +7,9 @@ name: validate-packages
 # build-check-goreleaser or build-release-goreleaser (their dist artifact).
 # For each package it checks, inside a matching distro container:
 #
-# - the file list is exactly what the caller expects (rpm: `rpm -qlp`,
-#   including owned directories; deb: regular files and symlinks only, since
-#   dpkg owns parent directories implicitly)
+# - the file list is exactly what the caller expects (regular files and
+#   symlinks only: dpkg owns parent directories implicitly, and rpm matches so
+#   one spec covers both)
 # - the rpm signature verifies against the gpg-public-key.asc that
 #   build-release-goreleaser puts in the artifact when it signs (skipped when
 #   absent, e.g. PR/check builds or no gpg-key)
@@ -21,7 +21,7 @@ on:
   workflow_call:
     inputs:
       packages:
-        description: 'YAML list of package specs, each with a `name` glob ending in .rpm or .deb and a `files` list; every matching package is validated'
+        description: 'YAML list of package specs, each with a `name` glob, a `files` list, and optional `rpm-files`/`deb-files` extras; every matching .rpm/.deb is validated'
         required: true
         type: string
       dist-artifact-name:
@@ -71,17 +71,13 @@ jobs:
           touch "$entries"
           while IFS= read -r spec; do
             glob=$(jq -r '.name' <<< "$spec")
-            case "$glob" in
-              *.rpm) format=rpm ;;
-              *.deb) format=deb ;;
-              *) echo "::error::package name must end in .rpm or .deb: ${glob}"; exit 1 ;;
-            esac
-            mapfile -d '' pkgs < <(find dist -type f -name "$glob" -print0 | sort -z)
+            mapfile -d '' pkgs < <(find dist -type f -name "$glob" \( -name '*.rpm' -o -name '*.deb' \) -print0 | sort -z)
             if (( ${#pkgs[@]} == 0 )); then
               echo "::error::no package in dist matches ${glob}"
               exit 1
             fi
             for pkg in "${pkgs[@]}"; do
+              format=${pkg##*.}
               if [[ "$format" == rpm ]]; then
                 arch=$(rpm -qp --nosignature --qf '%{ARCH}' "$pkg")
               else
@@ -94,7 +90,8 @@ jobs:
               esac
               jq -c --arg path "$pkg" --arg file "${pkg##*/}" --arg format "$format" \
                 --arg runner "$runner" \
-                '. + {path: $path, file: $file, format: $format, runner: $runner}' \
+                '. + {path: $path, file: $file, format: $format, runner: $runner,
+                      files: ((.files // []) + (.["\($format)-files"] // []))}' \
                 <<< "$spec" >> "$entries"
             done
           done < <(yq -o=json -I=0 '.[]' <<< "$PACKAGES")
@@ -142,7 +139,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$PKG_FORMAT" == rpm ]]; then
-            rpm -qlp --nosignature "$PKG" | sort | grep -v '^$' > /tmp/actual-files.txt
+            rpm -qp --nosignature --qf '[%{FILEMODES:perms} %{FILENAMES}\n]' "$PKG" | sed -n 's/^[^d][^ ]* //p' | sort > /tmp/actual-files.txt
           else
             dpkg-deb --fsys-tarfile "$PKG" | tar -t | sed 's|^\./|/|' | grep -v '/$' | sort | grep -v '^$' > /tmp/actual-files.txt
           fi

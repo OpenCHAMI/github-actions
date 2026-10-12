@@ -149,18 +149,13 @@ jobs:
     uses: OpenCHAMI/github-actions/.github/workflows/validate-packages.yml@v4.0
     with:
       packages: |
-        - name: foo-quadlet*.rpm
+        - name: foo-quadlet*
           files:
-            - /etc/openchami
-            - /etc/openchami/configs
             - /etc/openchami/configs/foo.yaml
             - /usr/share/containers/systemd/foo.container
-            - /usr/share/licenses/foo-quadlet
+          rpm-files:
             - /usr/share/licenses/foo-quadlet/MIT.txt
-        - name: foo-quadlet*.deb
-          files:
-            - /etc/openchami/configs/foo.yaml
-            - /usr/share/containers/systemd/foo.container
+          deb-files:
             - /usr/share/doc/foo-quadlet/copyright
       # Optional overrides:
       # dist-artifact-name: goreleaser-dist
