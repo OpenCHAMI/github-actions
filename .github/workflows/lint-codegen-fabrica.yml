@@ -46,8 +46,8 @@ jobs:
         env:
           FABRICA_REF: ${{ inputs.fabrica-ref }}
         run: |
-          ref="$FABRICA_REF"
-          if [[ -z "$ref" ]]; then
+          version="$FABRICA_REF"
+          if [[ -z "$version" ]]; then
             version=$(go mod edit -json | jq -r '
               .Require[]?
               | select(.Path == "github.com/openchami/fabrica")
@@ -57,8 +57,12 @@ jobs:
               echo "::error::fabrica-ref not set and no github.com/openchami/fabrica version found in go.mod"
               exit 1
             fi
-            # Resolve the tag or pseudo-version to the commit it names
-            ref=$(go list -mod=mod -m -json "github.com/openchami/fabrica@${version}" | jq -r '.Origin.Hash')
+          fi
+          # Resolve the tag, branch, commit, or pseudo-version to the commit it names
+          if ! ref=$(go list -mod=mod -m -json "github.com/openchami/fabrica@${version}" |
+            jq -er '.Origin.Hash | select(type == "string" and test("^[0-9a-f]{40}$"))'); then
+            echo "::error::Could not resolve Fabrica ref: ${version}"
+            exit 1
           fi
           echo "Using Fabrica ref: ${ref}"
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
