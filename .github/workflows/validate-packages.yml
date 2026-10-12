@@ -21,7 +21,7 @@ on:
   workflow_call:
     inputs:
       packages:
-        description: 'YAML list of package specs, each with a `name` glob ending in .rpm or .deb and a `files` list'
+        description: 'YAML list of package specs, each with a `name` glob ending in .rpm or .deb and a `files` list; every matching package is validated'
         required: true
         type: string
       dist-artifact-name:
@@ -54,34 +54,69 @@ jobs:
     outputs:
       matrix: ${{ steps.parse.outputs.matrix }}
     steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.dist-artifact-name }}
+          path: dist
+
       - name: Parse package specs
         id: parse
         env:
           PACKAGES: ${{ inputs.packages }}
-          RPM_IMAGE: ${{ inputs.rpm-image }}
-          DEB_IMAGE: ${{ inputs.deb-image }}
         run: |
           set -euo pipefail
-          matrix=$(yq -o=json -I=0 '.' <<< "$PACKAGES" | jq -c --arg rpm "$RPM_IMAGE" --arg deb "$DEB_IMAGE" '
-            map(. + {image: (
-              if (.name | test("\\.rpm$")) then $rpm
-              elif (.name | test("\\.deb$")) then $deb
-              else error("package name must end in .rpm or .deb: \(.name)") end)})')
+          # One matrix entry per file matching each spec's glob. The arch is
+          # read from the package header and picks a runner that can install it.
+          entries="${RUNNER_TEMP}/matrix.jsonl"
+          touch "$entries"
+          while IFS= read -r spec; do
+            glob=$(jq -r '.name' <<< "$spec")
+            case "$glob" in
+              *.rpm) format=rpm ;;
+              *.deb) format=deb ;;
+              *) echo "::error::package name must end in .rpm or .deb: ${glob}"; exit 1 ;;
+            esac
+            mapfile -d '' pkgs < <(find dist -type f -name "$glob" -print0 | sort -z)
+            if (( ${#pkgs[@]} == 0 )); then
+              echo "::error::no package in dist matches ${glob}"
+              exit 1
+            fi
+            for pkg in "${pkgs[@]}"; do
+              if [[ "$format" == rpm ]]; then
+                arch=$(rpm -qp --nosignature --qf '%{ARCH}' "$pkg")
+              else
+                arch=$(dpkg-deb -f "$pkg" Architecture)
+              fi
+              case "$arch" in
+                x86_64|amd64|noarch|all) runner=ubuntu-latest ;;
+                aarch64|arm64) runner=ubuntu-24.04-arm ;;
+                *) echo "::error::unsupported architecture ${arch}: ${pkg}"; exit 1 ;;
+              esac
+              jq -c --arg path "$pkg" --arg file "${pkg##*/}" --arg format "$format" \
+                --arg runner "$runner" \
+                '. + {path: $path, file: $file, format: $format, runner: $runner}' \
+                <<< "$spec" >> "$entries"
+            done
+          done < <(yq -o=json -I=0 '.[]' <<< "$PACKAGES")
+          matrix=$(jq -sc '.' "$entries")
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
 
   validate:
     needs: parse
-    name: validate (${{ matrix.package.name }})
-    runs-on: ubuntu-latest
+    name: validate (${{ matrix.package.file }})
+    runs-on: ${{ matrix.package.runner }}
     strategy:
       fail-fast: false
       matrix:
         package: ${{ fromJSON(needs.parse.outputs.matrix) }}
     container:
-      image: ${{ matrix.package.image }}
+      image: ${{ matrix.package.format == 'rpm' && inputs.rpm-image || inputs.deb-image }}
     defaults:
       run:
         shell: bash
+    env:
+      PKG: ${{ matrix.package.path }}
+      PKG_FORMAT: ${{ matrix.package.format }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -91,27 +126,6 @@ jobs:
           name: ${{ inputs.dist-artifact-name }}
           path: dist
 
-      - name: Find package
-        env:
-          PKG_NAME: ${{ matrix.package.name }}
-        run: |
-          set -euo pipefail
-          # PKG_NAME is a glob; sort makes the pick deterministic if it
-          # matches more than one file.
-          pkg=$(find dist -type f -name "${PKG_NAME}" | sort | head -n 1)
-          if [[ -z "$pkg" ]]; then
-            echo "::error::no package in dist matches ${PKG_NAME}"
-            exit 1
-          fi
-          case "$pkg" in
-            *.rpm) format=rpm ;;
-            *.deb) format=deb ;;
-          esac
-          echo "using ${pkg} (${format})"
-          {
-            echo "PKG=${pkg}"
-            echo "PKG_FORMAT=${format}"
-          } >> "$GITHUB_ENV"
       - name: Install tools
         run: |
           set -euo pipefail
