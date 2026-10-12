@@ -22,4 +22,4 @@ jobs:
       security-events: write  # zizmor SARIF upload to GHAS
 
   lint-renovate:
-    uses: ./.github/workflows/lint-renovate.yml
+    uses: $/.github/workflows/lint-renovate.yml
