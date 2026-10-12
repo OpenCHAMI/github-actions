@@ -3,5 +3,21 @@
   "extends": [
     "github>OpenCHAMI/.github//renovate-config/default",
     "config:recommended"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Default renovate-config-validator version in lint-renovate and its README example",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/lint-renovate\\.yml$/",
+        "/^README\\.md$/"
+      ],
+      "matchStrings": [
+        "renovate-version:\\s*\\n(?:\\s+[a-z]+:.*\\n)*?\\s+default: '(?<currentValue>\\d+\\.\\d+\\.\\d+)'",
+        "#\\s+renovate-version: (?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "renovate",
+      "datasourceTemplate": "npm"
+    }
   ]
 }

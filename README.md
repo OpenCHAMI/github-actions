@@ -424,6 +424,27 @@ jobs:
     #   fabrica-ref: v0.4.5         # tag, branch, or SHA; default: version in go.mod
 ```
 
+### lint-renovate (Reusable Workflow)
+Validates the caller's Renovate config with `renovate-config-validator` (as repository config). With no `config-file`, it checks every Renovate config file it finds (`renovate.json`, `.github/renovate.json`, `renovate.json5`, `.renovaterc`, ...).
+
+**Usage:**
+```yaml
+name: Lint Renovate
+on:
+  pull_request:
+    paths:
+      - renovate.json
+      - .github/workflows/lint-renovate.yml
+
+jobs:
+  lint-renovate:
+    uses: OpenCHAMI/github-actions/.github/workflows/lint-renovate.yml@v4.0
+    # Optional overrides:
+    # with:
+    #   renovate-version: 44.115.13
+    #   config-file: renovate.json
+```
+
 ## Actions
 
 ### gpg-configure-release-keys
