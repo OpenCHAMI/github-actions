@@ -20,3 +20,6 @@ jobs:
     permissions:
       contents: read          # baseline for checkout
       security-events: write  # zizmor SARIF upload to GHAS
+
+  lint-renovate:
+    uses: $/.github/workflows/lint-renovate.yml

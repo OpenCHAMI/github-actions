@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: lint-renovate
+
+# Reusable workflow that validates the caller's Renovate config with
+# renovate-config-validator. With no config-file, the validator checks every
+# config file it finds in the repository (renovate.json, .github/renovate.json,
+# renovate.json5, .renovaterc, ...).
+
+on:
+  workflow_call:
+    inputs:
+      renovate-version:
+        description: 'Renovate npm version that provides renovate-config-validator'
+        required: false
+        type: string
+        default: '44.115.13'
+      config-file:
+        description: 'Config file to validate (default: every Renovate config file found in the repo)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read   # baseline for checkout
+
+jobs:
+  lint-renovate:
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - name: Validate Renovate config
+        env:
+          RENOVATE_VERSION: ${{ inputs.renovate-version }}
+          CONFIG_FILE: ${{ inputs.config-file }}
+        run: |
+          # --no-global: validate as repository config, not self-hosted config.
+          npx --yes --package "renovate@${RENOVATE_VERSION}" -- \
+            renovate-config-validator --no-global ${CONFIG_FILE:+"$CONFIG_FILE"}

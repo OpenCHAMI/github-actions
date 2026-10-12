@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: stale
+
+# Reusable workflow that marks and closes inactive issues and PRs with the
+# org-default actions/stale policy. Callers own the schedule (a reusable
+# workflow can't schedule itself).
+
+on:
+  workflow_call:
+    inputs:
+      days-before-stale:
+        description: 'Days of inactivity before an issue or PR is marked stale'
+        required: false
+        type: number
+        default: 35
+      days-before-close:
+        description: 'Days after being marked stale before an issue or PR is closed'
+        required: false
+        type: number
+        default: 7
+      stale-issue-label:
+        description: 'Label applied to stale issues'
+        required: false
+        type: string
+        default: 'stale'
+      stale-pr-label:
+        description: 'Label applied to stale PRs'
+        required: false
+        type: string
+        default: 'stale'
+      exempt-issue-labels:
+        description: 'Comma-separated labels that exempt an issue from going stale'
+        required: false
+        type: string
+        default: 'pinned,security,help wanted'
+      exempt-pr-labels:
+        description: 'Comma-separated labels that exempt a PR from going stale'
+        required: false
+        type: string
+        default: 'pinned,security'
+      operations-per-run:
+        description: 'Maximum GitHub API operations per run'
+        required: false
+        type: number
+        default: 500
+      stale-issue-message:
+        description: 'Comment posted when an issue is marked stale'
+        required: false
+        type: string
+        default: >-
+          This issue has been automatically marked as stale due to inactivity.
+          Please add a comment or label to keep it open; otherwise it will close in 7 days.
+      close-issue-message:
+        description: 'Comment posted when a stale issue is closed'
+        required: false
+        type: string
+        default: 'Closing due to inactivity. Feel free to reopen with new information.'
+      stale-pr-message:
+        description: 'Comment posted when a PR is marked stale'
+        required: false
+        type: string
+        default: 'This PR has been marked stale due to inactivity. Comment or push changes to keep it open.'
+      close-pr-message:
+        description: 'Comment posted when a stale PR is closed'
+        required: false
+        type: string
+        default: 'Closing due to inactivity. Please reopen when it’s ready again.'
+
+permissions:
+  issues: write          # label, comment on, and close stale issues
+  pull-requests: write   # label, comment on, and close stale PRs
+
+jobs:
+  stale:
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          days-before-stale: ${{ inputs.days-before-stale }}
+          days-before-close: ${{ inputs.days-before-close }}
+          stale-issue-label: ${{ inputs.stale-issue-label }}
+          stale-pr-label: ${{ inputs.stale-pr-label }}
+          exempt-issue-labels: ${{ inputs.exempt-issue-labels }}
+          exempt-pr-labels: ${{ inputs.exempt-pr-labels }}
+          operations-per-run: ${{ inputs.operations-per-run }}
+          remove-stale-when-updated: true
+          stale-issue-message: ${{ inputs.stale-issue-message }}
+          close-issue-message: ${{ inputs.close-issue-message }}
+          stale-pr-message: ${{ inputs.stale-pr-message }}
+          close-pr-message: ${{ inputs.close-pr-message }}
