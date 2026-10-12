@@ -12,6 +12,7 @@ Reusable GitHub Actions for CI/CD.
 - `actions/gpg-configure-release-keys`: **Deprecated** - use nfpm package signing in `build-release-goreleaser` instead. Generates and certifies a per-run ephemeral GPG key through the repo's release key chain
 - `actions/gpg-sign-rpm`: **Deprecated** - use nfpm package signing in `build-release-goreleaser` instead. RPM signing with ephemeral keys
 - `actions/gpg-check-key-expiration`: Fails CI if a signing key is expired or expiring soon
+- `actions/discover-ghcr-images`: Finds and verifies a repo's GHCR image names (`images` input, GoReleaser config, or repo name)
 - `actions/gpg-verify-trust-chain`: **Deprecated** - use the `rpm -K` check in `validate-packages` instead. Verifies the master/repo-cert/ephemeral trust chain and optionally checksigs RPMs
 - `.github/workflows/go-build-release.yml`: **Deprecated** - use `build-release-goreleaser` (build-only: `build-check-goreleaser`) instead. Reusable workflow for GoReleaser builds
 - `.github/workflows/docker-build-release.yml`: **Deprecated** - use `build-release-goreleaser` (build-only: `build-check-goreleaser`) instead. Reusable workflow for multi-arch container image builds
@@ -96,7 +97,7 @@ Runs the caller's GoReleaser config in one of two modes, chosen from the trigger
 - **PR** (`pull_request` event): tags HEAD locally as `pr-<PR number>` and pushes the resulting images (e.g. `:pr-12`). No GitHub release, no signing, no attestation, and no packages: nfpm is skipped because a `pr-<N>` version isn't a valid deb version, so validate PR packages with `build-check-goreleaser` (snapshot) instead. Fork PRs build but publish nothing.
 - **Release** (`v*` tag push): semver images, packages (signed when the `gpg-key` secret is passed and the nfpm config uses `GPG_KEY_PATH`), a GitHub release (draft by default) with GitHub-generated notes, and build provenance attestations for the release files and every published image. When signing, the public key is derived from `gpg-key` and attached to the release (and the dist artifact) as `gpg-public-key.asc`.
 
-Outputs `version` and `digest` (the image manifest digest, for `trivy-image-scan`). Uploads the packages, archives, and checksums as an artifact for `validate-packages`.
+Outputs `version` and `digest` (the image manifest digest). Uploads the packages, archives, and checksums as an artifact for `validate-packages`.
 
 **Usage:**
 ```yaml
@@ -331,7 +332,7 @@ jobs:
 ```
 
 ### trivy-image-scan (Reusable Workflow)
-Scans an already-pushed container image with Trivy and uploads SARIF findings to GitHub Advanced Security. Designed to chain after `build-release-goreleaser`, scanning the image by the digest it outputs.
+Scans already-pushed container images with Trivy and uploads SARIF findings to GitHub Advanced Security. It scans each image at the release tag (`pr-<N>` on pull requests), one job per image, by digest. GitHub doesn't let `GITHUB_TOKEN` list packages, so image names come from `images`, else the `ghcr.io` entries in the GoReleaser config (`dockers_v2[].images`), else the repository name (see `discover-ghcr-images`). Every name must be an existing package; all bad names are reported, then the run fails. Run it after `build-release-goreleaser`.
 
 **Usage:**
 ```yaml
@@ -342,12 +343,16 @@ jobs:
   scan:
     needs: build
     uses: OpenCHAMI/github-actions/.github/workflows/trivy-image-scan.yml@v4.0
-    with:
-      image-ref: ghcr.io/openchami/foo@${{ needs.build.outputs.digest }}
-      # Optional overrides:
-      # severity: CRITICAL
-      # ignore-unfixed: true
-      # exit-code: '0'  # report only
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    # Optional overrides:
+    # with:
+    #   images: foo foo-init   # default: from the GoReleaser config, else the repo name
+    #   severity: CRITICAL
+    #   ignore-unfixed: true
+    #   exit-code: '0'  # report only
 ```
 
 ### scorecard (Reusable Workflow)
@@ -591,6 +596,9 @@ Signs an RPM using a provided GPG fingerprint (works with the ephemeral key outp
 
 ### gpg-check-key-expiration
 Fails CI if the provided signing key is expired or expiring within a threshold. See the [action README](actions/gpg-check-key-expiration/README.md).
+
+### discover-ghcr-images
+Finds a repo's GHCR image names from the `images` input, else the GoReleaser config, else the repo name, and verifies each one exists. Used by `trivy-image-scan`. See the [action README](actions/discover-ghcr-images/README.md).
 
 ### gpg-verify-trust-chain (Deprecated)
 
