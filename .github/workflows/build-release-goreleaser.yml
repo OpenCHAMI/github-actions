@@ -224,7 +224,14 @@ jobs:
             # nfpm: package versions can't be derived from a `pr-<N>` tag (deb
             # requires a leading digit). Validate PR packages with
             # build-check-goreleaser (snapshot) instead.
-            skip+=(announce validate archive nfpm)
+            skip+=(archive nfpm)
+            if [[ "$SKIP_PUBLISH" == true ]]; then
+              # dockers_v2 builds images in the publish phase, so skipping
+              # publish skips them. Snapshot builds them locally instead.
+              args+=(--snapshot)
+            else
+              skip+=(announce validate)
+            fi
           else
             [[ "$RELEASE_DRAFT" == true ]] && args+=(--draft)
             [[ "$GENERATE_NOTES" == true ]] && args+=(--release-notes "${RUNNER_TEMP}/release-notes.md")
