@@ -281,9 +281,11 @@ jobs:
             [.[] | select(.extra.Digest != null and (.type | IN("Docker Manifest", "Docker Image", "Published Docker Image")))
              | {name: (.name | sub(":[^:/]+$"; "")), digest: .extra.Digest}] | unique
           ' <<< "$ARTIFACTS")
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
-          echo "images=${images:-[]}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=${version}"
+            echo "digest=${digest}"
+            echo "images=${images:-[]}"
+          } >> "$GITHUB_OUTPUT"
           echo "version=${version} digest=${digest:-<none>}"
       - name: Attest binaries
         if: ${{ env.IS_PR_BUILD == 'false' && env.SKIP_PUBLISH == 'false' }}
