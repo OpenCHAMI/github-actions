@@ -13,7 +13,7 @@ name: build-release-goreleaser
 #   signing, no attestation. Fork PRs build but publish nothing.
 # - Release (`v*` tag push): semver images, (optionally signed) packages, a
 #   GitHub release (draft by default) with GitHub-generated notes, and build
-#   provenance attestations for the binaries and the image digest.
+#   provenance attestations for the binaries and every published image.
 #
 # Contract with the caller's .goreleaser.yaml: these environment variables
 # are always set (empty when unused), so templates can reference them:
@@ -60,11 +60,6 @@ on:
         required: false
         type: boolean
         default: true
-      registry-subject-name:
-        description: 'Image name (e.g. ghcr.io/openchami/foo) to attest by digest; empty skips image attestation'
-        required: false
-        type: string
-        default: ''
       attestation-subject-path:
         description: 'Glob of release files to attest'
         required: false
@@ -107,6 +102,7 @@ jobs:
     outputs:
       version: ${{ steps.metadata.outputs.version }}
       digest: ${{ steps.metadata.outputs.digest }}
+      images: ${{ steps.metadata.outputs.images }}
     env:
       IS_PR_BUILD: ${{ github.event_name == 'pull_request' }}
       # Fork PRs get a read-only token: build, but publish nothing.
@@ -280,21 +276,20 @@ jobs:
                + [$a[] | select(.type == "Docker Image")]
                + [$a[] | select(.type == "Published Docker Image")])[0].extra.Digest // empty
           ' <<< "$ARTIFACTS")
+          # Every published image (tag stripped) by digest, for attest-images.
+          images=$(jq -c '
+            [.[] | select(.extra.Digest != null and (.type | IN("Docker Manifest", "Docker Image", "Published Docker Image")))
+             | {name: (.name | sub(":[^:/]+$"; "")), digest: .extra.Digest}] | unique
+          ' <<< "$ARTIFACTS")
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "images=${images:-[]}" >> "$GITHUB_OUTPUT"
           echo "version=${version} digest=${digest:-<none>}"
       - name: Attest binaries
         if: ${{ env.IS_PR_BUILD == 'false' && env.SKIP_PUBLISH == 'false' }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ inputs.attestation-subject-path }}
-      - name: Attest image
-        if: ${{ env.IS_PR_BUILD == 'false' && env.SKIP_PUBLISH == 'false' && inputs.registry-subject-name != '' && steps.metadata.outputs.digest != '' }}
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-name: ${{ inputs.registry-subject-name }}
-          subject-digest: ${{ steps.metadata.outputs.digest }}
-          push-to-registry: true
       - name: Publish GPG public key
         if: ${{ steps.signing.outputs.public-key-path != '' }}
         env:
@@ -319,3 +314,24 @@ jobs:
             dist/*checksums.txt
             dist/gpg-public-key.asc
           if-no-files-found: warn
+
+  attest-images:
+    needs: build-release-goreleaser
+    if: ${{ github.event_name != 'pull_request' && needs.build-release-goreleaser.outputs.images != '[]' }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: ${{ fromJSON(needs.build-release-goreleaser.outputs.images) }}
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Attest image
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ matrix.image.name }}
+          subject-digest: ${{ matrix.image.digest }}
+          push-to-registry: true

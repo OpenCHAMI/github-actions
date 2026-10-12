@@ -21,7 +21,7 @@
 # rpm / deb packages (incl. quadlet) nfpms
 # Package signing                    nfpms[].rpm.signature (GPG_KEY_PATH)
 # GitHub release + notes             release
-# Build provenance attestations      (workflow: `registry-subject-name` input)
+# Build provenance attestations      (workflow: automatic for binaries and images)
 # GPG public key on the release      (workflow: derived from `gpg-key`)
 # Publishing to a yum/apt repository (out of scope; see below)
 #
@@ -140,8 +140,8 @@ checksum:
 #   ENTRYPOINT ["/usr/bin/foo"]
 #
 # Tags that render empty are skipped, which keeps `latest` and the semver
-# shortcuts off PR builds. Pass the image name to build-release-goreleaser as
-# `registry-subject-name` to attest it.
+# shortcuts off PR builds. build-release-goreleaser attests every published
+# image by digest.
 #
 # Docs: https://goreleaser.com/customization/package/dockers_v2/
 dockers_v2:
