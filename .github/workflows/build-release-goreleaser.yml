@@ -218,22 +218,22 @@ jobs:
           GENERATE_NOTES: ${{ inputs.generate-release-notes }}
           EXTRA_ARGS: ${{ inputs.goreleaser-args }}
         run: |
-          args="release --clean"
+          args=(release --clean)
+          skip=()
           if [[ "$IS_PR_BUILD" == true ]]; then
             # nfpm: package versions can't be derived from a `pr-<N>` tag (deb
             # requires a leading digit). Validate PR packages with
             # build-check-goreleaser (snapshot) instead.
-            skip="announce,validate,archive,nfpm"
-            [[ "$SKIP_PUBLISH" == true ]] && skip+=",publish"
-            args+=" --skip=${skip}"
+            skip+=(announce validate archive nfpm)
           else
-            [[ "$SKIP_PUBLISH" == true ]] && args+=" --skip=publish"
-            [[ "$RELEASE_DRAFT" == true ]] && args+=" --draft"
-            [[ "$GENERATE_NOTES" == true ]] && args+=" --release-notes ${RUNNER_TEMP}/release-notes.md"
+            [[ "$RELEASE_DRAFT" == true ]] && args+=(--draft)
+            [[ "$GENERATE_NOTES" == true ]] && args+=(--release-notes "${RUNNER_TEMP}/release-notes.md")
           fi
-          [[ -n "$EXTRA_ARGS" ]] && args+=" ${EXTRA_ARGS}"
-          echo "GoReleaser arguments: ${args}"
-          echo "args=${args}" >> "$GITHUB_OUTPUT"
+          [[ "$SKIP_PUBLISH" == true ]] && skip+=(publish)
+          (( ${#skip[@]} )) && args+=("--skip=$(IFS=,; echo "${skip[*]}")")
+          [[ -n "$EXTRA_ARGS" ]] && args+=("$EXTRA_ARGS")
+          echo "GoReleaser arguments: ${args[*]}"
+          echo "args=${args[*]}" >> "$GITHUB_OUTPUT"
       - name: Run GoReleaser
         id: goreleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
