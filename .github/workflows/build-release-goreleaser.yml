@@ -269,6 +269,8 @@ jobs:
             [.[] | select(.extra.Digest != null and (.type | IN("Docker Manifest", "Docker Image", "Published Docker Image")))
              | {name: (.name | sub(":[^:/]+$"; "")), digest: .extra.Digest}] | unique
           ' <<< "$ARTIFACTS")
+          # Fork PRs build locally; nothing was pushed.
+          [[ "$SKIP_PUBLISH" == true ]] && images='[]'
           {
             echo "version=${version}"
             echo "images=${images:-[]}"
