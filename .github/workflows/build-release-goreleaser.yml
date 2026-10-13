@@ -86,9 +86,6 @@ on:
       version:
         description: 'Version GoReleaser built'
         value: ${{ jobs.build-release-goreleaser.outputs.version }}
-      digest:
-        description: 'Image digest (manifest when present), empty if no image was published'
-        value: ${{ jobs.build-release-goreleaser.outputs.digest }}
 
 permissions:
   contents: write      # release creation, uploading assets
@@ -101,7 +98,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.metadata.outputs.version }}
-      digest: ${{ steps.metadata.outputs.digest }}
       images: ${{ steps.metadata.outputs.images }}
     env:
       IS_PR_BUILD: ${{ github.event_name == 'pull_request' }}
@@ -268,14 +264,6 @@ jobs:
           ARTIFACTS: ${{ steps.goreleaser.outputs.artifacts }}
         run: |
           version=$(jq -r '.version // empty' <<< "$METADATA")
-          # Prefer the multi-arch manifest, then a dockers_v2 image, then a
-          # single published image.
-          digest=$(jq -r '
-            [.[] | select(.extra.Digest != null)] as $a
-            | ([$a[] | select(.type == "Docker Manifest")]
-               + [$a[] | select(.type == "Docker Image")]
-               + [$a[] | select(.type == "Published Docker Image")])[0].extra.Digest // empty
-          ' <<< "$ARTIFACTS")
           # Every published image (tag stripped) by digest, for attest-images.
           images=$(jq -c '
             [.[] | select(.extra.Digest != null and (.type | IN("Docker Manifest", "Docker Image", "Published Docker Image")))
@@ -283,10 +271,9 @@ jobs:
           ' <<< "$ARTIFACTS")
           {
             echo "version=${version}"
-            echo "digest=${digest}"
             echo "images=${images:-[]}"
           } >> "$GITHUB_OUTPUT"
-          echo "version=${version} digest=${digest:-<none>}"
+          echo "version=${version} images=${images:-[]}"
       - name: Attest binaries
         if: ${{ env.IS_PR_BUILD == 'false' && env.SKIP_PUBLISH == 'false' }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2

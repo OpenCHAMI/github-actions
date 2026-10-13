@@ -96,7 +96,7 @@ Runs the caller's GoReleaser config in one of two modes, chosen from the trigger
 - **PR** (`pull_request` event): tags HEAD locally as `pr-<PR number>` and pushes the resulting images (e.g. `:pr-12`). No GitHub release, no signing, no attestation, and no packages: nfpm is skipped because a `pr-<N>` version isn't a valid deb version, so validate PR packages with `build-check-goreleaser` (snapshot) instead. Fork PRs build but publish nothing.
 - **Release** (`v*` tag push): semver images, packages (signed when the `gpg-key` secret is passed and the nfpm config uses `GPG_KEY_PATH`), a GitHub release (draft by default) with GitHub-generated notes, and build provenance attestations for the release files and every published image. When signing, the public key is derived from `gpg-key` and attached to the release (and the dist artifact) as `gpg-public-key.asc`.
 
-Outputs `version` and `digest` (the image manifest digest, for `trivy-image-scan`). Uploads the packages, archives, and checksums as an artifact for `validate-packages`.
+Outputs `version`. Uploads the packages, archives, and checksums as an artifact for `validate-packages`.
 
 **Usage:**
 ```yaml
@@ -331,7 +331,7 @@ jobs:
 ```
 
 ### trivy-image-scan (Reusable Workflow)
-Scans an already-pushed container image with Trivy and uploads SARIF findings to GitHub Advanced Security. Designed to chain after `build-release-goreleaser`, scanning the image by the digest it outputs.
+Scans an already-pushed container image with Trivy and uploads SARIF findings to GitHub Advanced Security. Designed to chain after `build-release-goreleaser`.
 
 **Usage:**
 ```yaml
@@ -343,7 +343,7 @@ jobs:
     needs: build
     uses: OpenCHAMI/github-actions/.github/workflows/trivy-image-scan.yml@v4.0
     with:
-      image-ref: ghcr.io/openchami/foo@${{ needs.build.outputs.digest }}
+      image-ref: ghcr.io/openchami/foo@<digest>  # TODO(#44): scan finds image digests itself
       # Optional overrides:
       # severity: CRITICAL
       # ignore-unfixed: true
