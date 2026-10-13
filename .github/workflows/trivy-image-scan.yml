@@ -37,6 +37,11 @@ on:
         required: false
         type: string
         default: '1'
+      runner:
+        description: 'Runner for the scan job (default: ubuntu-slim)'
+        required: false
+        type: string
+        default: 'ubuntu-slim'
 
 permissions:
   contents: read          # baseline for checkout
@@ -96,7 +101,7 @@ jobs:
   trivy:
     needs: discover
     if: ${{ needs.discover.outputs.images != '[]' }}
-    runs-on: ubuntu-slim
+    runs-on: ${{ inputs.runner }}
     strategy:
       fail-fast: false
       matrix:
