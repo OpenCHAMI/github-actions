@@ -96,7 +96,7 @@ Runs the caller's GoReleaser config in one of two modes, chosen from the trigger
 - **PR** (`pull_request` event): tags HEAD locally as `pr-<PR number>` and pushes the resulting images (e.g. `:pr-12`). No GitHub release, no signing, no attestation, and no packages: nfpm is skipped because a `pr-<N>` version isn't a valid deb version, so validate PR packages with `build-check-goreleaser` (snapshot) instead. Fork PRs build but publish nothing.
 - **Release** (`v*` tag push): semver images, packages (signed when the `gpg-key` secret is passed and the nfpm config uses `GPG_KEY_PATH`), a GitHub release (draft by default) with GitHub-generated notes, and build provenance attestations for the release files and every published image. When signing, the public key is derived from `gpg-key` and attached to the release (and the dist artifact) as `gpg-public-key.asc`.
 
-Outputs `version`. Uploads the packages, archives, and checksums as an artifact for `validate-packages`.
+Outputs `version` and `images` (published images as a JSON array of `{name, digest}`, `[]` on fork PRs). Uploads the packages, archives, and checksums as an artifact for `validate-packages`.
 
 **Usage:**
 ```yaml

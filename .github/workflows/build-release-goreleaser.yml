@@ -86,6 +86,9 @@ on:
       version:
         description: 'Version GoReleaser built'
         value: ${{ jobs.build-release-goreleaser.outputs.version }}
+      images:
+        description: 'Published images as a JSON array of {name, digest}; empty on PRs from forks'
+        value: ${{ jobs.build-release-goreleaser.outputs.images }}
 
 permissions:
   contents: write      # release creation, uploading assets
