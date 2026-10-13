@@ -1,0 +1,128 @@
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: build-check-goreleaser
+
+# Reusable workflow that proves the caller's GoReleaser config builds
+# everything (binaries, archives, packages, images) without publishing
+# anything: `goreleaser release --snapshot`. Read-only and secret-free, so it
+# is safe for fork PRs. Use build-release-goreleaser to publish.
+#
+# Sets the same environment as build-release-goreleaser (GIT_STATE,
+# BUILD_HOST, GO_VERSION, BUILD_USER, IS_PR_BUILD=true, GPG_KEY_PATH empty) so
+# the same .goreleaser.yaml works in both.
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: 'Go version to use (e.g. "1.26.7", "stable"). Mutually exclusive with go-version-file.'
+        required: false
+        type: string
+      go-version-file:
+        description: 'Path to a go.mod or .go-version file containing the Go version. Mutually exclusive with go-version.'
+        required: false
+        type: string
+      goreleaser-version:
+        description: 'GoReleaser version to run'
+        required: false
+        type: string
+        default: 'v2.18.2'
+      build-deps:
+        description: 'Space-separated apt packages to install before building (e.g. "gcc-aarch64-linux-gnu libc6-dev-arm64-cross")'
+        required: false
+        type: string
+        default: ''
+      cgo-enabled:
+        description: 'Value for CGO_ENABLED'
+        required: false
+        type: number
+        default: 0
+      skip:
+        description: 'Comma-separated GoReleaser pipes to skip (e.g. "docker")'
+        required: false
+        type: string
+        default: ''
+      dist-artifact-name:
+        description: 'Artifact name for the packages, archives, and checksums in dist/ (e.g. for validate-packages); empty skips the upload'
+        required: false
+        type: string
+        default: 'goreleaser-dist'
+
+permissions:
+  contents: read   # baseline for checkout
+
+jobs:
+  build-check-goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: Install build dependencies
+        if: ${{ inputs.build-deps != '' }}
+        env:
+          BUILD_DEPS: ${{ inputs.build-deps }}
+        run: |
+          sudo apt-get update
+          # shellcheck disable=SC2086 # intentional word splitting
+          sudo apt-get install -y --no-install-recommends ${BUILD_DEPS}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ inputs.go-version || (inputs.go-version-file == '' && 'stable' || '') }}
+          go-version-file: ${{ inputs.go-version-file || '' }}
+          cache: false   # published artifacts must not come from a poisonable cache
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Set build environment
+        id: build-env
+        run: |
+          git_state=dirty
+          if git diff-index --quiet HEAD -- >/dev/null 2>&1; then
+            git_state=clean
+          fi
+          {
+            echo "git-state=${git_state}"
+            echo "build-host=$(hostname)"
+            echo "go-version=$(go version | awk '{print $3}')"
+            echo "build-user=$(whoami)"
+          } >> "$GITHUB_OUTPUT"
+      - name: Assemble GoReleaser arguments
+        id: args
+        env:
+          SKIP: ${{ inputs.skip }}
+        run: |
+          args="release --snapshot --clean"
+          [[ -n "$SKIP" ]] && args+=" --skip=${SKIP}"
+          echo "GoReleaser arguments: ${args}"
+          echo "args=${args}" >> "$GITHUB_OUTPUT"
+      - name: Run GoReleaser (snapshot)
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        env:
+          CGO_ENABLED: ${{ inputs.cgo-enabled }}
+          IS_PR_BUILD: 'true'
+          GIT_STATE: ${{ steps.build-env.outputs.git-state }}
+          BUILD_HOST: ${{ steps.build-env.outputs.build-host }}
+          GO_VERSION: ${{ steps.build-env.outputs.go-version }}
+          BUILD_USER: ${{ steps.build-env.outputs.build-user }}
+          GPG_KEY_PATH: ''
+        with:
+          distribution: goreleaser
+          version: ${{ inputs.goreleaser-version }}
+          args: ${{ steps.args.outputs.args }}
+
+      - name: Upload dist
+        if: ${{ inputs.dist-artifact-name != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.dist-artifact-name }}
+          path: |
+            dist/*.rpm
+            dist/*.deb
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*checksums.txt
+          if-no-files-found: warn
