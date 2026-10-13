@@ -484,7 +484,7 @@ jobs:
 ```
 
 ### pr-registry-cleanup (Reusable Workflow)
-Deletes the GHCR container image versions a pull request published, once that pull request closes. Matches the PR's base tag and any separated qualifier (`pr-12`, `pr-12-amd64`, `pr-12-dirty-abc123`).
+Deletes the GHCR container image versions a pull request published, once that pull request closes. Matches the PR's base tag and any separated qualifier (`pr-12`, `pr-12-amd64`, `pr-12-dirty-abc123`) in each image, one job per image. Image names come from `images`, else the GoReleaser config, else the repository name (see `discover-ghcr-images`). Fork PRs are skipped, since they publish nothing. Every name must be an existing package; all failed lookups and deletes are reported, then the run fails.
 
 **Usage:**
 ```yaml
@@ -497,11 +497,11 @@ jobs:
   cleanup:
     uses: OpenCHAMI/github-actions/.github/workflows/pr-registry-cleanup.yml@v4.0
     permissions:
+      contents: read
       packages: write
     # Optional overrides:
     # with:
-    #   pr-number: 123
-    #   tag-prefix: pr-
+    #   images: foo foo-init   # default: from the GoReleaser config, else the repo name
 ```
 
 ### stale (Reusable Workflow)
@@ -598,7 +598,7 @@ Signs an RPM using a provided GPG fingerprint (works with the ephemeral key outp
 Fails CI if the provided signing key is expired or expiring within a threshold. See the [action README](actions/gpg-check-key-expiration/README.md).
 
 ### discover-ghcr-images
-Finds a repo's GHCR image names from the `images` input, else the GoReleaser config, else the repo name, and verifies each one exists. Used by `trivy-image-scan`. See the [action README](actions/discover-ghcr-images/README.md).
+Finds a repo's GHCR image names from the `images` input, else the GoReleaser config, else the repo name, and verifies each one exists. Used by `trivy-image-scan` and `pr-registry-cleanup`. See the [action README](actions/discover-ghcr-images/README.md).
 
 ### gpg-verify-trust-chain (Deprecated)
 
