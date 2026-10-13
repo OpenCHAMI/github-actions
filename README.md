@@ -58,6 +58,8 @@ jobs:
 
 Pin a commit SHA instead for maximum supply-chain safety if desired.
 
+Workflows with a `runner` input run on `ubuntu-slim` by default, which has 1 CPU and a 15-minute job limit; set `runner: ubuntu-latest` for longer jobs.
+
 ## Workflows
 
 ### Building and releasing with GoReleaser
@@ -240,6 +242,7 @@ jobs:
     # with:
     #   golangci-lint-version: v2.13.2
     #   go-version-file: go.mod
+    #   runner: ubuntu-latest
 ```
 
 ### test-unit-go (Reusable Workflow)
@@ -268,6 +271,7 @@ jobs:
     #     ./...
     #   coverage: true
     #   coverage-file: coverage.out
+    #   runner: ubuntu-latest
 ```
 
 ### reuse (Reusable Workflow)
@@ -309,6 +313,7 @@ jobs:
     # with:
     #   go-version: 1.26.7  # default: read from go.mod
     #   go-package: ./cmd/...
+    #   runner: ubuntu-latest
 ```
 
 ### dependency-review (Reusable Workflow)
@@ -353,6 +358,7 @@ jobs:
     #   severity: CRITICAL
     #   ignore-unfixed: true
     #   exit-code: '0'  # report only
+    #   runner: ubuntu-latest
 ```
 
 ### scorecard (Reusable Workflow)
@@ -555,6 +561,7 @@ jobs:
     #   go-version: stable          # mutually exclusive with go-version-file
     #   go-version-file: go.mod
     #   fabrica-ref: v0.4.5         # tag, branch, or SHA; default: version in go.mod
+    #   runner: ubuntu-latest
 ```
 
 ### lint-renovate (Reusable Workflow)

@@ -23,13 +23,18 @@ on:
         required: false
         type: string
         default: './...'
+      runner:
+        description: 'Runner for the govulncheck job (default: ubuntu-slim)'
+        required: false
+        type: string
+        default: 'ubuntu-slim'
 
 permissions:
   contents: read   # baseline for checkout
 
 jobs:
   govulncheck:
-    runs-on: ubuntu-slim
+    runs-on: ${{ inputs.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
