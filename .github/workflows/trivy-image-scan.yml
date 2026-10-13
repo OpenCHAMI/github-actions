@@ -55,8 +55,7 @@ jobs:
 
       - name: Discover images
         id: discover
-        # TODO: pin to the commit that adds actions/discover-ghcr-images
-        uses: OpenCHAMI/github-actions/actions/discover-ghcr-images@0000000000000000000000000000000000000000
+        uses: OpenCHAMI/github-actions/actions/discover-ghcr-images@26748ab38b9b17fa895919ef937aca32376a23e2
         with:
           images: ${{ inputs.images }}
 
