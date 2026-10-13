@@ -3,22 +3,25 @@
 
 name: trivy-image-scan
 
-# Reusable workflow that scans an already-built and -pushed container image
-# with Trivy. Emits SARIF and uploads it to GitHub Advanced Security so
-# findings land in the caller's Security tab.
+# Reusable workflow that scans already-pushed container images with Trivy.
+# Emits SARIF and uploads it to GitHub Advanced Security so findings land in
+# the caller's Security tab.
 #
-# Expects the image to already exist (either in a registry or as a local
-# `docker save` tar at `image-path`). To run as a build-time gate inside
-# docker-build-release, call this workflow after the build step with the
-# fully-qualified `<registry>/<name>@<digest>` ref.
+# Scans the caller's GHCR images at the release tag (the tag that triggered the
+# run, the triggering run's tag under `workflow_run`, or `pr-<N>` on pull
+# requests), one job per image, by digest. GITHUB_TOKEN can't list packages, so
+# image names come from `images`, else the ghcr.io entries in the GoReleaser
+# config (`dockers_v2[].images`), else the repository name (see
+# actions/discover-ghcr-images).
 
 on:
   workflow_call:
     inputs:
-      image-ref:
-        description: 'Image to scan (e.g., ghcr.io/openchami/foo@sha256:...)'
-        required: true
+      images:
+        description: 'Space- or newline-separated GHCR package names to scan (default: from the GoReleaser config, else the repository name)'
+        required: false
         type: string
+        default: ''
       severity:
         description: 'Comma-separated severities to report (default: HIGH,CRITICAL)'
         required: false
@@ -37,11 +40,67 @@ on:
 
 permissions:
   contents: read          # baseline for checkout
+  packages: read          # read image versions
   security-events: write  # for SARIF upload to GHAS
 
 jobs:
-  trivy:
+  discover:
     runs-on: ubuntu-slim
+    outputs:
+      images: ${{ steps.images.outputs.images }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Discover images
+        id: discover
+        uses: OpenCHAMI/github-actions/actions/discover-ghcr-images@26748ab38b9b17fa895919ef937aca32376a23e2
+        with:
+          images: ${{ inputs.images }}
+
+      # TODO: IF: Candidate for deduplication into another reusable action
+      # IFF another workflow needs image digests.
+      - name: Find image digests
+        id: images
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          NAMES: ${{ steps.discover.outputs.names }}
+          # PR builds are tagged pr-<N> by build-release-goreleaser.
+          TAG: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event.workflow_run.head_branch || github.ref_name }}
+        run: |
+          set -euo pipefail
+          registry="ghcr.io/${OWNER,,}"
+          images='[]'
+          failed=false
+          # shellcheck disable=SC2086 # intentional word splitting
+          for package in $NAMES; do
+            if ! versions=$(gh api --paginate "/orgs/${OWNER}/packages/container/${package}/versions"); then
+              echo "::error::Can't read versions of ghcr.io package '${package}'."
+              failed=true
+              continue
+            fi
+            digest=$(jq -r --arg tag "$TAG" '[.[] | select((.metadata.container.tags // []) | index($tag)) | .name][0] // empty' <<< "$versions")
+            if [[ -z "$digest" ]]; then
+              echo "::notice::${package} has no image tagged ${TAG}; skipping"
+              continue
+            fi
+            images=$(jq -c --arg name "${registry}/${package}" --arg digest "$digest" \
+              '. + [{name: $name, digest: $digest}]' <<< "$images")
+          done
+          [[ "$failed" == false ]] || exit 1
+          echo "images=${images}"
+          echo "images=${images}" >> "$GITHUB_OUTPUT"
+
+  trivy:
+    needs: discover
+    if: ${{ needs.discover.outputs.images != '[]' }}
+    runs-on: ubuntu-slim
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.discover.outputs.images) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -50,7 +109,7 @@ jobs:
       - name: Run Trivy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ inputs.image-ref }}
+          image-ref: ${{ matrix.image.name }}@${{ matrix.image.digest }}
           format: sarif
           output: trivy-results.sarif
           severity: ${{ inputs.severity }}
@@ -62,4 +121,4 @@ jobs:
         uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           sarif_file: trivy-results.sarif
-          category: trivy-image-scan
+          category: trivy-image-scan/${{ matrix.image.name }}  # one category per image
