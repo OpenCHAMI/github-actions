@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: lint-makefile-common
+
+# Reusable workflow that fails when the caller's vendored Makefile.common
+# differs from the canonical copy in the latest release of
+# OpenCHAMI/github-actions.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read   # checkout; read the canonical file
+
+jobs:
+  lint-makefile-common:
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare Makefile.common with the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REPO: OpenCHAMI/github-actions
+        run: |
+          set -euo pipefail
+          if [[ ! -f Makefile.common ]]; then
+            echo "::error file=Makefile.common::No Makefile.common in this repository. Copy it from https://github.com/${SOURCE_REPO}/releases/latest."
+            exit 1
+          fi
+          # /releases/latest excludes drafts and prereleases.
+          tag=$(gh api "repos/${SOURCE_REPO}/releases/latest" --jq .tag_name)
+          sha=$(gh api "repos/${SOURCE_REPO}/commits/${tag}" --jq .sha)
+          canonical="${RUNNER_TEMP}/Makefile.common"
+          if ! gh api -H "Accept: application/vnd.github.raw" \
+              "repos/${SOURCE_REPO}/contents/Makefile.common?ref=${sha}" > "$canonical" 2> "${RUNNER_TEMP}/err"; then
+            if grep -q "HTTP 404" "${RUNNER_TEMP}/err"; then
+              echo "::error::No Makefile.common in ${SOURCE_REPO} release ${tag} (${sha})."
+            else
+              cat "${RUNNER_TEMP}/err" >&2
+              echo "::error::Couldn't read Makefile.common from ${SOURCE_REPO} release ${tag} (${sha})."
+            fi
+            exit 1
+          fi
+          if ! diff -u --label "${SOURCE_REPO}@${tag} (${sha})" --label "Makefile.common" "$canonical" Makefile.common; then
+            echo "::error file=Makefile.common::Makefile.common differs from ${SOURCE_REPO} release ${tag} (${sha}). Replace it with that copy."
+            exit 1
+          fi
+          echo "Makefile.common matches ${SOURCE_REPO} release ${tag} (${sha})."
