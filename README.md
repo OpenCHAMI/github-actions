@@ -36,6 +36,8 @@ Reusable GitHub Actions for CI/CD.
 - `.github/workflows/validate-packages.yml`: Reusable workflow that validates rpm/deb packages (file list, signature, install, lint)
 - `.github/workflows/stale.yml`: Reusable workflow that marks and closes inactive issues and PRs (org-default policy)
 - `.github/workflows/lint-codegen-fabrica.yml`: Reusable workflow that fails when a Fabrica project's committed generated code is out of date
+- `.github/workflows/lint-makefile-common.yml`: Reusable workflow that fails when a repo's vendored `Makefile.common` differs from the latest release
+- `Makefile.common`: Shared Makefile targets that OpenCHAMI repos vendor and include
 
 ### Workflow naming
 
@@ -584,6 +586,46 @@ jobs:
     #   renovate-version: 44.115.13
     #   config-file: renovate.json
 ```
+
+### lint-makefile-common (Reusable Workflow)
+Fails when the repo's vendored `Makefile.common` differs from the copy in the latest release of this repository (read at the release's commit SHA), and prints the diff. Takes no inputs. Make it a required check only if drift should block merging.
+
+**Usage:**
+```yaml
+name: Lint Makefile.common
+on:
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1'   # catch new releases
+
+jobs:
+  lint-makefile-common:
+    uses: OpenCHAMI/github-actions/.github/workflows/lint-makefile-common.yml@v4.0
+```
+
+## Makefile.common
+
+Shared Makefile targets for OpenCHAMI repositories. Copy [`Makefile.common`](Makefile.common) from the latest release to your repo root, don't edit it, and include it from your `Makefile`:
+
+```make
+BINARIES := foo-server:./cmd/server   # overrides go before the include
+include Makefile.common
+
+migrate:                              # repo-only targets go below
+	./scripts/migrate.sh
+```
+
+- `make help` lists every target, including your own (give them a `## description`).
+- Covers Go (build, test, lint, vuln), Fabrica codegen, containers, GoReleaser packages, and REUSE.
+- `all`, `install`, `build`, and `run` are double-colon rules: add your own `install::` (etc.) and both recipes run.
+- Pass extra arguments with `ARGS` (`make test ARGS="-run TestFoo"`).
+- Targets that don't apply skip: Go targets without `go.mod`, `generate` without Fabrica, container targets without a `Containerfile` or `Dockerfile`. `release-snapshot` and `build-packages` fail without a GoReleaser config.
+- Tools beyond coreutils and POSIX utilities are checked before use; the file installs nothing.
+- GNU make 3.81 or newer (macOS's `/usr/bin/make` works).
+
+Common overrides: `BINARIES` (default: one `name:./cmd/name` per `cmd/` directory), `CONTAINERFILE`, `CONTAINER_IMAGE_FQCN`, `TEST_TIMEOUT`, `CLEANFILES` (append with `+=`), `GO_LDFLAGS` (append with `+=`). See the variables section at the top of the file for the rest. For local `build-packages` with a GoReleaser config that signs packages (`key_file: "{{ .Env.GPG_KEY_PATH }}"`), run `make build-packages GPG_KEY_PATH=` to build unsigned.
+
+Add [`lint-makefile-common`](#lint-makefile-common-reusable-workflow) to catch drift.
 
 ## Actions
 
