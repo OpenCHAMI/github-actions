@@ -626,6 +626,24 @@ migrate:                              # repo-only targets go below
 
 Common overrides: `BINARIES` (default: one `name:./cmd/name` per `cmd/` directory), `CONTAINERFILE`, `CONTAINER_IMAGE_FQCN`, `TEST_TIMEOUT`, `CLEANFILES` (append with `+=`), `GO_LDFLAGS` (append with `+=`; default sets `$(GO_MODULE)/internal/version.*` build info), `GO_VERSION_PACKAGE`. See the variables section at the top of the file for the rest. For local `build-packages` with a GoReleaser config that signs packages (`key_file: "{{ .Env.GPG_KEY_PATH }}"`), run `make build-packages GPG_KEY_PATH=` to build unsigned.
 
+Release binaries get their build info from GoReleaser, not `make build`. Set the same `internal/version` variables in your GoReleaser config so both match:
+
+```yaml
+builds:
+  - ldflags:
+      - -X {{ .ModulePath }}/internal/version.Version={{ .Version }}
+      - -X {{ .ModulePath }}/internal/version.Tag={{ .Tag }}
+      - -X {{ .ModulePath }}/internal/version.Branch={{ .Branch }}
+      - -X {{ .ModulePath }}/internal/version.Commit={{ .FullCommit }}
+      - -X {{ .ModulePath }}/internal/version.Date={{ .Date }}
+      - -X {{ .ModulePath }}/internal/version.GoVersion={{ envOrDefault "GO_VERSION" "unknown" }}
+      - -X {{ .ModulePath }}/internal/version.GitState={{ envOrDefault "GIT_STATE" "unknown" }}
+      - -X {{ .ModulePath }}/internal/version.BuildHost={{ envOrDefault "BUILD_HOST" "unknown" }}
+      - -X {{ .ModulePath }}/internal/version.BuildUser={{ envOrDefault "BUILD_USER" "unknown" }}
+```
+
+`build-release-goreleaser` and `Makefile.common` export `GO_VERSION`, `GIT_STATE`, `BUILD_HOST`, and `BUILD_USER`.
+
 Add [`lint-makefile-common`](#lint-makefile-common-reusable-workflow) to catch drift.
 
 ## Actions
