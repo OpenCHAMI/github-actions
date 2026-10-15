@@ -137,7 +137,7 @@ CLEANFILES ?= bin/ dist/ coverage.out coverage.html reuse.spdx
 
 .PHONY: help all install fmt vet tidy test coverage lint lint-fix vuln build run \
 	generate generate-check container-build container-run release-snapshot \
-	build-packages reuse reuse-annotate reuse-download-license reuse-spdx clean
+	build-packages reuse-check reuse-annotate reuse-download-license reuse-spdx clean
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "\033[36m%-24s\033[0m %s\n", $$1, $$2}'
