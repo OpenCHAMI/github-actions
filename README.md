@@ -617,6 +617,7 @@ migrate:                              # repo-only targets go below
 
 - `make help` lists every target, including your own (give them a `## description`).
 - Covers Go (build, test, lint, vuln), Fabrica codegen, containers, GoReleaser packages, and REUSE.
+- `lint-ci` runs actionlint and zizmor from containers (`ACTIONLINT_IMAGE`, `ZIZMOR_IMAGE`) with podman or docker; nothing is installed. Passes `GH_TOKEN` through for zizmor's online audits. Not part of `all`.
 - `all`, `deps`, `build`, `run`, `install`, and `uninstall` are double-colon rules: add your own `deps::` (etc.) and both recipes run.
 - `install` / `uninstall` put already-built `BINARIES` (`make build` first) in `$(DESTDIR)$(bindir)` (default `/usr/local/bin`; override `prefix`, `bindir`, `DESTDIR`).
 - Pass extra arguments with `ARGS` (`make test ARGS="-run TestFoo"`).

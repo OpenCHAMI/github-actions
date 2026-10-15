@@ -31,7 +31,7 @@
 #
 # Targets that don't apply skip with a message: Go targets without go.mod,
 # Fabrica targets without Fabrica, container targets without a Containerfile
-# or Dockerfile. GNU make 3.81 compatible.
+# or Dockerfile, lint-ci without .github/workflows. GNU make 3.81 compatible.
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -134,6 +134,10 @@ bindir ?= $(exec_prefix)/bin
 CONTAINERFILE ?= $(firstword $(wildcard Containerfile Dockerfile))
 CONTAINER_TAG ?= latest
 CONTAINER_IMAGE_FQCN ?= ghcr.io/openchami/$(PROJECT):$(CONTAINER_TAG)
+
+# lint-ci runs these images with CONTAINER_ENGINE instead of local installs.
+ACTIONLINT_IMAGE ?= docker.io/rhysd/actionlint:1.7.12
+ZIZMOR_IMAGE ?= ghcr.io/zizmorcore/zizmor:1.30.1
 
 REUSE_COPYRIGHT ?= OpenCHAMI a Series of LF Projects, LLC
 REUSE_LICENSE ?= MIT
@@ -250,6 +254,16 @@ ifeq ($(GO_MOD),)
 else
 	$(call require,govulncheck,Install with: go install golang.org/x/vuln/cmd/govulncheck@latest)
 	govulncheck $(ARGS) ./...
+endif
+
+.PHONY: lint-ci
+lint-ci: ## Lint GitHub Actions workflows with actionlint and zizmor (in containers)
+ifeq ($(wildcard .github/workflows),)
+	$(call skip,no .github/workflows)
+else
+	$(call require,$(CONTAINER_ENGINE),Install podman or docker.)
+	$(CONTAINER_ENGINE) run --rm --user 0:0 -v "$(CURDIR):/repo:ro,z" -w /repo $(ACTIONLINT_IMAGE) -color
+	$(CONTAINER_ENGINE) run --rm --user 0:0 -v "$(CURDIR):/repo:ro,z" -w /repo -e GH_TOKEN $(ZIZMOR_IMAGE) .
 endif
 
 .PHONY: build
