@@ -227,7 +227,7 @@ jobs:
 ```
 
 ### lint-go (Reusable Workflow)
-Lints the caller's Go module. Runs `golangci-lint`, and separately verifies `go.mod`/`go.sum` are tidy by running the tidy command and failing on a dirty diff. Uses Go `stable` unless the caller sets `go-version` or `go-version-file`. `golangci-lint` tracks `latest` unless pinned.
+Lints the caller's Go module. Runs `golangci-lint`, and separately verifies `go.mod`/`go.sum` are tidy by running the tidy command and failing on a dirty diff. Uses Go `stable` unless the caller sets `go-version` or `go-version-file`. `golangci-lint` is pinned (Renovate-managed); override with `golangci-lint-version`.
 
 **Usage:**
 ```yaml
@@ -242,7 +242,7 @@ jobs:
     uses: OpenCHAMI/github-actions/.github/workflows/lint-go.yml@v4.0
     # Optional overrides:
     # with:
-    #   golangci-lint-version: v2.13.2
+    #   golangci-lint-version: v2.14.0
     #   go-version-file: go.mod
     #   runner: ubuntu-latest
 ```
