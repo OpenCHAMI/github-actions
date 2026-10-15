@@ -624,7 +624,7 @@ migrate:                              # repo-only targets go below
 - Tools beyond coreutils and POSIX utilities are checked before use; the file installs nothing.
 - GNU make 3.81 or newer (macOS's `/usr/bin/make` works).
 
-Common overrides: `BINARIES` (default: one `name:./cmd/name` per `cmd/` directory), `CONTAINERFILE`, `CONTAINER_IMAGE_FQCN`, `TEST_TIMEOUT`, `CLEANFILES` (append with `+=`), `GO_LDFLAGS` (append with `+=`). See the variables section at the top of the file for the rest. For local `build-packages` with a GoReleaser config that signs packages (`key_file: "{{ .Env.GPG_KEY_PATH }}"`), run `make build-packages GPG_KEY_PATH=` to build unsigned.
+Common overrides: `BINARIES` (default: one `name:./cmd/name` per `cmd/` directory), `CONTAINERFILE`, `CONTAINER_IMAGE_FQCN`, `TEST_TIMEOUT`, `CLEANFILES` (append with `+=`), `GO_LDFLAGS` (append with `+=`; default sets `$(GO_MODULE)/internal/version.*` build info), `GO_VERSION_PACKAGE`. See the variables section at the top of the file for the rest. For local `build-packages` with a GoReleaser config that signs packages (`key_file: "{{ .Env.GPG_KEY_PATH }}"`), run `make build-packages GPG_KEY_PATH=` to build unsigned.
 
 Add [`lint-makefile-common`](#lint-makefile-common-reusable-workflow) to catch drift.
 

@@ -61,6 +61,12 @@ GO ?= go
 ifndef VERSION
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 endif
+ifndef TAG
+TAG := $(or $(shell git describe --tags --always --abbrev=0 2>/dev/null),unknown)
+endif
+ifndef BRANCH
+BRANCH := $(or $(shell git branch --show-current 2>/dev/null),unknown)
+endif
 ifndef COMMIT
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 endif
@@ -90,8 +96,26 @@ ifndef GO_TOOLCHAIN_VERSION
 GO_TOOLCHAIN_VERSION := $(shell awk '$$1 == "toolchain" { sub(/^go/, "", $$2); t = $$2 } $$1 == "go" { g = $$2 } END { print (t != "" ? t : g) }' go.mod 2>/dev/null)
 endif
 
+ifndef GO_MODULE
+GO_MODULE := $(shell awk '$$1 == "module" { print $$2; exit }' go.mod 2>/dev/null)
+endif
+
 GO_BUILD_FLAGS ?= -v
-GO_LDFLAGS ?= -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(BUILD_DATETIME)
+
+# Build info for the version package (OpenCHAMI convention: internal/version
+# with these variables). Variables the package doesn't declare are ignored by
+# the linker.
+GO_VERSION_PACKAGE ?= $(GO_MODULE)/internal/version
+GO_LDFLAGS ?= \
+	-X '$(GO_VERSION_PACKAGE).Version=$(VERSION)' \
+	-X '$(GO_VERSION_PACKAGE).Tag=$(TAG)' \
+	-X '$(GO_VERSION_PACKAGE).Branch=$(BRANCH)' \
+	-X '$(GO_VERSION_PACKAGE).Commit=$(COMMIT)' \
+	-X '$(GO_VERSION_PACKAGE).Date=$(BUILD_DATETIME)' \
+	-X '$(GO_VERSION_PACKAGE).GoVersion=$(GO_VERSION)' \
+	-X '$(GO_VERSION_PACKAGE).GitState=$(GIT_STATE)' \
+	-X '$(GO_VERSION_PACKAGE).BuildHost=$(BUILD_HOST)' \
+	-X '$(GO_VERSION_PACKAGE).BuildUser=$(BUILD_USER)'
 TEST_TIMEOUT ?= 15m
 ARGS ?=
 
