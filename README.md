@@ -617,7 +617,8 @@ migrate:                              # repo-only targets go below
 
 - `make help` lists every target, including your own (give them a `## description`).
 - Covers Go (build, test, lint, vuln), Fabrica codegen, containers, GoReleaser packages, and REUSE.
-- `all`, `install`, `build`, and `run` are double-colon rules: add your own `install::` (etc.) and both recipes run.
+- `all`, `deps`, `build`, `run`, `install`, and `uninstall` are double-colon rules: add your own `deps::` (etc.) and both recipes run.
+- `install` / `uninstall` put already-built `BINARIES` (`make build` first) in `$(DESTDIR)$(bindir)` (default `/usr/local/bin`; override `prefix`, `bindir`, `DESTDIR`).
 - Pass extra arguments with `ARGS` (`make test ARGS="-run TestFoo"`).
 - Targets that don't apply skip: Go targets without `go.mod`, `generate` without Fabrica, container targets without a `Containerfile` or `Dockerfile`. `release-snapshot` and `build-packages` fail without a GoReleaser config.
 - Tools beyond coreutils and POSIX utilities are checked before use; the file installs nothing.

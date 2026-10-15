@@ -15,11 +15,11 @@
 #   migrate:                  # repo-only targets go below
 #   	...
 #
-# Extending targets: all, install, build, and run are double-colon rules. Add
-# your own rule with the same name and `::`, and both recipes run in order
-# (this file's first):
+# Extending targets: all, deps, build, run, install, and uninstall are
+# double-colon rules. Add your own rule with the same name and `::`, and both
+# recipes run in order (this file's first):
 #
-#   install::
+#   deps::
 #   	npm ci
 #
 # Don't give an extension rule a `## description` (help would list it twice).
@@ -102,6 +102,11 @@ RUN_BINARY ?= $(firstword $(subst :, ,$(firstword $(BINARIES))))
 ifndef CONTAINER_ENGINE
 CONTAINER_ENGINE := $(or $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null),podman)
 endif
+# install/uninstall destination (GNU conventions; DESTDIR for staging).
+prefix ?= /usr/local
+exec_prefix ?= $(prefix)
+bindir ?= $(exec_prefix)/bin
+
 CONTAINERFILE ?= $(firstword $(wildcard Containerfile Dockerfile))
 CONTAINER_TAG ?= latest
 CONTAINER_IMAGE_FQCN ?= ghcr.io/openchami/$(PROJECT):$(CONTAINER_TAG)
@@ -135,17 +140,22 @@ CLEANFILES ?= bin/ dist/ coverage.out coverage.html reuse.spdx
 # ---------------------------------------------------------------------------
 # Targets
 
-.PHONY: help all install fmt vet tidy test coverage lint lint-fix vuln build run \
-	generate generate-check container-build container-run release-snapshot \
-	build-packages reuse-check reuse-annotate reuse-download-license reuse-spdx clean
-
+.PHONY: help
 help: ## List targets
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "\033[36m%-24s\033[0m %s\n", $$1, $$2}'
 
-all:: install lint test build ## Install, lint, test, and build
+.PHONY: all
+all:: deps lint test build ## Install dependencies, lint, test, and build
 
-install:: ## Install dependencies (repos add steps)
+.PHONY: deps
+deps:: ## Install development dependencies (repos add steps)
+ifneq ($(GO_MOD),)
+	$(call require,$(GO))
+	$(GO) mod download
+	$(GO) mod verify
+endif
 
+.PHONY: fmt
 fmt: ## Format Go code
 ifeq ($(GO_MOD),)
 	$(call skip,no go.mod)
@@ -154,6 +164,7 @@ else
 	$(GO) fmt ./...
 endif
 
+.PHONY: vet
 vet: ## Run go vet
 ifeq ($(GO_MOD),)
 	$(call skip,no go.mod)
@@ -162,6 +173,7 @@ else
 	$(GO) vet ./...
 endif
 
+.PHONY: tidy
 tidy: ## Tidy go.mod and go.sum
 ifeq ($(GO_MOD),)
 	$(call skip,no go.mod)
@@ -170,6 +182,7 @@ else
 	$(GO) mod tidy
 endif
 
+.PHONY: test
 test: ## Run unit tests
 ifeq ($(GO_MOD),)
 	$(call skip,no go.mod)
@@ -178,6 +191,7 @@ else
 	$(GO) test $(GO_BUILD_FLAGS) -timeout $(TEST_TIMEOUT) -race ./... $(ARGS)
 endif
 
+.PHONY: coverage
 coverage: ## Run unit tests with coverage (coverage.out, coverage.html)
 ifeq ($(GO_MOD),)
 	$(call skip,no go.mod)
@@ -187,6 +201,7 @@ else
 	$(GO) tool cover -html=coverage.out -o coverage.html
 endif
 
+.PHONY: lint
 lint: ## Run golangci-lint
 ifeq ($(GO_MOD),)
 	$(call skip,no go.mod)
@@ -195,6 +210,7 @@ else
 	GOTOOLCHAIN=go$(GO_TOOLCHAIN_VERSION) golangci-lint run $(ARGS)
 endif
 
+.PHONY: lint-fix
 lint-fix: ## Run golangci-lint with --fix
 ifeq ($(GO_MOD),)
 	$(call skip,no go.mod)
@@ -203,6 +219,7 @@ else
 	GOTOOLCHAIN=go$(GO_TOOLCHAIN_VERSION) golangci-lint run --fix $(ARGS)
 endif
 
+.PHONY: vuln
 vuln: ## Scan Go modules for known vulnerabilities
 ifeq ($(GO_MOD),)
 	$(call skip,no go.mod)
@@ -211,6 +228,7 @@ else
 	govulncheck $(ARGS) ./...
 endif
 
+.PHONY: build
 build:: ## Build BINARIES into bin/
 ifeq ($(strip $(BINARIES)),)
 	$(call skip,no BINARIES)
@@ -223,6 +241,7 @@ else
 	done
 endif
 
+.PHONY: run
 run:: build ## Build and run RUN_BINARY
 ifeq ($(strip $(RUN_BINARY)),)
 	$(call skip,no RUN_BINARY)
@@ -230,6 +249,36 @@ else
 	./bin/$(RUN_BINARY)
 endif
 
+.PHONY: install
+install:: ## Install built BINARIES into $(DESTDIR)$(bindir) (run make build first)
+ifeq ($(strip $(BINARIES)),)
+	$(call skip,no BINARIES)
+else
+	@for b in $(BINARIES); do \
+		name=$${b%%:*}; \
+		[ -f bin/$$name ] || { echo "$@: bin/$$name not found; run make build first" >&2; exit 1; }; \
+	done
+	install -d $(DESTDIR)$(bindir)
+	@for b in $(BINARIES); do \
+		name=$${b%%:*}; \
+		echo "install -m 0755 bin/$$name $(DESTDIR)$(bindir)/$$name"; \
+		install -m 0755 bin/$$name $(DESTDIR)$(bindir)/$$name || exit 1; \
+	done
+endif
+
+.PHONY: uninstall
+uninstall:: ## Remove BINARIES from $(DESTDIR)$(bindir)
+ifeq ($(strip $(BINARIES)),)
+	$(call skip,no BINARIES)
+else
+	@for b in $(BINARIES); do \
+		name=$${b%%:*}; \
+		echo "rm -f $(DESTDIR)$(bindir)/$$name"; \
+		rm -f $(DESTDIR)$(bindir)/$$name; \
+	done
+endif
+
+.PHONY: generate
 generate: ## Regenerate Fabrica code
 ifeq ($(USES_FABRICA),)
 	$(call skip,Fabrica not in go.mod and LOCAL_FABRICA unset)
@@ -246,6 +295,7 @@ endif
 	$(FABRICA_ENV) $(FABRICA_CMD) generate $(FABRICA_SOURCE_ARG) $(FABRICA_FORCE_FLAG)
 endif
 
+.PHONY: generate-check
 generate-check: ## Fail if generated Fabrica code is out of date (exit 2: dirty tree, 1: out of date)
 ifeq ($(USES_FABRICA),)
 	$(call skip,Fabrica not in go.mod and LOCAL_FABRICA unset)
@@ -264,6 +314,7 @@ else
 	fi
 endif
 
+.PHONY: container-build
 container-build: ## Build the container image (CONTAINER_IMAGE_FQCN)
 ifeq ($(strip $(CONTAINERFILE)),)
 	$(call skip,no Containerfile or Dockerfile)
@@ -277,6 +328,7 @@ else
 		-t $(CONTAINER_IMAGE_FQCN) .
 endif
 
+.PHONY: container-run
 container-run: container-build ## Build and run the container image
 ifeq ($(strip $(CONTAINERFILE)),)
 	$(call skip,no Containerfile or Dockerfile)
@@ -284,6 +336,7 @@ else
 	$(CONTAINER_ENGINE) run --rm $(CONTAINER_IMAGE_FQCN)
 endif
 
+.PHONY: release-snapshot
 release-snapshot: ## Full local GoReleaser dry run (binaries, packages, images)
 ifeq ($(GORELEASER_CONFIG),)
 	@echo "$@: no GoReleaser config found (.goreleaser.yaml or equivalent)" >&2; exit 1
@@ -292,6 +345,7 @@ else
 	goreleaser release --snapshot --clean $(ARGS)
 endif
 
+.PHONY: build-packages
 build-packages: ## Build all packages with GoReleaser (no images or archives)
 ifeq ($(GORELEASER_CONFIG),)
 	@echo "$@: no GoReleaser config found (.goreleaser.yaml or equivalent)" >&2; exit 1
@@ -300,25 +354,30 @@ else
 	goreleaser release --snapshot --clean --skip=docker,archive $(ARGS)
 endif
 
+.PHONY: reuse-check
 reuse-check: ## Check REUSE compliance
 	$(call require,reuse,See https://reuse.software/)
 	reuse lint --lines
 
+.PHONY: reuse-annotate
 reuse-annotate: ## Add missing SPDX headers (never rewrites existing ones)
 	$(call require,reuse,See https://reuse.software/)
 	reuse annotate --copyright="$(REUSE_COPYRIGHT)" --copyright-prefix=spdx-symbol \
 		--license=$(REUSE_LICENSE) --year=$(REUSE_YEAR) \
 		--skip-existing --fallback-dot-license --recursive .
 
+.PHONY: reuse-download-license
 reuse-download-license: ## Download a license text (LICENSE=MIT)
 	@if [ -z "$(LICENSE)" ]; then echo "Usage: make $@ LICENSE=<SPDX id>" >&2; exit 1; fi
 	$(call require,reuse,See https://reuse.software/)
 	reuse download $(LICENSE)
 
+.PHONY: reuse-spdx
 reuse-spdx: ## Write an SPDX bill of materials (reuse.spdx)
 	$(call require,reuse,See https://reuse.software/)
 	reuse spdx -o reuse.spdx
 
+.PHONY: clean
 clean: ## Remove CLEANFILES and the Go build cache
 	rm -rf $(CLEANFILES)
 ifneq ($(GO_MOD),)
