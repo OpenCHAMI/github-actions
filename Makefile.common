@@ -319,11 +319,9 @@ reuse-spdx: ## Write an SPDX bill of materials (reuse.spdx)
 	$(call require,reuse,See https://reuse.software/)
 	reuse spdx -o reuse.spdx
 
-clean: ## Remove CLEANFILES
+clean: ## Remove CLEANFILES and the Go build cache
 	rm -rf $(CLEANFILES)
-ifeq ($(GO_MOD),)
-	$(call skip,no go.mod)
-else
+ifneq ($(GO_MOD),)
 	$(call require,$(GO))
 	$(GO) clean -cache
 endif
