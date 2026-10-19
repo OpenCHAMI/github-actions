@@ -23,6 +23,7 @@
 # GitHub release + notes             release
 # Build provenance attestations      (workflow: automatic for binaries and images)
 # GPG public key on the release      (workflow: derived from `gpg-key`)
+# Signed checksums.txt + key chain   (workflow: gpg-sign-artifacts; needs checksum)
 # Publishing to a yum/apt repository (out of scope; see below)
 #
 # Out of scope: GoReleaser only attaches packages to the GitHub release.
@@ -121,11 +122,12 @@ archives:
       - LICENSES/*
       - README.md
 
-# Checksums for every release file.
+# Checksums for every release file. gpg-sign-artifacts signs this file, and
+# release verification expects exactly this name.
 #
 # Docs: https://goreleaser.com/customization/package/checksum/
 checksum:
-  name_template: "{{ .ProjectName }}_checksums.txt"
+  name_template: checksums.txt
 
 # -------------------------------------------------------------------------
 # Container images

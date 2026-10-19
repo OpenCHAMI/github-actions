@@ -72,15 +72,6 @@
       "managerFilePatterns": ["/^Makefile\\.common$/"],
       "matchStrings": ["[A-Z_]+_IMAGE \\?= (?<depName>[^:\\s]+):(?<currentValue>[^\\s@]+)"],
       "datasourceTemplate": "docker"
-    },
-    {
-      "customType": "regex",
-      "description": "check-key-expiry.sh pinned to a gpg-signing-manager commit",
-      "managerFilePatterns": ["/^actions/gpg-check-key-expiration/action\\.ya?ml$/"],
-      "matchStrings": ["raw\\.githubusercontent\\.com/OpenCHAMI/gpg-signing-manager/(?<currentDigest>[a-f0-9]{40})/"],
-      "depNameTemplate": "https://github.com/OpenCHAMI/gpg-signing-manager",
-      "currentValueTemplate": "main",
-      "datasourceTemplate": "git-refs"
     }
   ]
 }
