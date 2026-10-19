@@ -51,6 +51,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Under workflow_run, github.sha is the default branch; read the built revision's config instead.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
 
       - name: Discover images
@@ -83,7 +85,8 @@ jobs:
             fi
             digest=$(jq -r --arg tag "$TAG" '[.[] | select((.metadata.container.tags // []) | index($tag)) | .name][0] // empty' <<< "$versions")
             if [[ -z "$digest" ]]; then
-              echo "::notice::${package} has no image tagged ${TAG}; skipping"
+              echo "::error::${package} has no image tagged ${TAG}"
+              failed=true
               continue
             fi
             images=$(jq -c --arg name "${registry}/${package}" --arg digest "$digest" \
@@ -104,6 +107,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
 
       - name: Run Trivy
