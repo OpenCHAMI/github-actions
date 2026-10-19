@@ -78,7 +78,9 @@ jobs:
           failed=false
           # shellcheck disable=SC2086 # intentional word splitting
           for package in $NAMES; do
-            if ! versions=$(gh api --paginate "/orgs/${OWNER}/packages/container/${package}/versions"); then
+            # Nested package names (tools/foo) need their slash encoded.
+            encoded=$(jq -rn --arg name "$package" '$name | @uri')
+            if ! versions=$(gh api --paginate "/orgs/${OWNER}/packages/container/${encoded}/versions"); then
               echo "::error::Can't read versions of ghcr.io package '${package}'."
               failed=true
               continue

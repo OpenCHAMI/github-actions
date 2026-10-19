@@ -97,7 +97,9 @@ runs:
         names=$(printf '%s\n' $NAMES | sort -u | xargs)
         failed=false
         for package in $names; do
-          if ! gh api "/orgs/${OWNER}/packages/container/${package}" --silent; then
+          # Nested package names (tools/foo) need their slash encoded.
+          encoded=$(jq -rn --arg name "$package" '$name | @uri')
+          if ! gh api "/orgs/${OWNER}/packages/container/${encoded}" --silent; then
             echo "::error::No ghcr.io package '${package}' (name from ${SOURCE}). Set the images input to the right package names."
             failed=true
           fi
