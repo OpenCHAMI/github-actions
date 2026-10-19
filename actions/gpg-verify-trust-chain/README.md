@@ -5,19 +5,20 @@ SPDX-License-Identifier: MIT
 
 # gpg-verify-trust-chain
 
-Verifies OpenCHAMI's release trust chain and the files it signs:
+Verifies OpenCHAMI's release trust chain and the files it signs (key names as in
+[Signing releases](../../docs/signing.md#the-keys)):
 
-1. The master public key matches `fingerprint-master`.
-2. The master certified the repo-cert key (`pubkey-repo.asc`), on the user ID
+1. The root public key matches `fingerprint-master`.
+2. The root key certified the repo key (`pubkey-repo.asc`), on the user ID
    `<owner>/<repo> RPM Signing Key` when `repo` is set.
-3. The repo-cert key certified the per-run signing key (`pubkey-signing.asc`).
-4. Each file in `files` has a good signature at `<file>.asc` from the signing
+3. The repo key certified the release key (`pubkey-signing.asc`).
+4. Each file in `files` has a good signature at `<file>.asc` from the release
    key.
 
-No key may be revoked or expired, so a signature whose 1-day signing key has
+No key may be revoked or expired, so a signature whose 1-day release key has
 expired fails. Each key file must hold exactly one key. Every failure is
 reported before the step fails. Format-agnostic: it verifies files such as
-`checksums.txt`, not packages. Pass the master public key from a trusted
+`checksums.txt`, not packages. Pass the root public key from a trusted
 source (the `MASTER_PUBLIC_ASC` org secret), never the `pubkey-org.asc`
 attached to a release.
 
