@@ -332,7 +332,7 @@ jobs:
 ```
 
 ### trivy-image-scan (Reusable Workflow)
-Scans already-pushed container images with Trivy and uploads SARIF findings to GitHub Advanced Security. It scans each image at the release tag (`pr-<N>` on pull requests), one job per image, by digest. GitHub doesn't let `GITHUB_TOKEN` list packages, so image names come from `images`, else the `ghcr.io` entries in the GoReleaser config (`dockers_v2[].images`), else the repository name (see `discover-ghcr-images`). Every name must be an existing package; all bad names are reported, then the run fails. Run it after `build-release-goreleaser`.
+Scans already-pushed container images with Trivy and uploads SARIF findings to GitHub Advanced Security. It scans each image at the build's tag (the pushed tag, or `pr-<N>` on pull requests; also when run from `workflow_run`), one job per image, by digest. Fork PRs publish no images and are skipped. GitHub doesn't let `GITHUB_TOKEN` list packages, so image names come from `images`, else the `ghcr.io` entries in the GoReleaser config (`dockers_v2[].images`), else the repository name (see `discover-ghcr-images`). Every name must be an existing package; all bad names are reported, then the run fails. Run it after `build-release-goreleaser`.
 
 **Usage:**
 ```yaml
