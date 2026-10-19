@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Verifies OpenCHAMI's release trust chain and the files it signs:
 
-1. The master public key matches `master-fingerprint`.
+1. The master public key matches `fingerprint-master`.
 2. The master certified the repo-cert key (`pubkey-repo.asc`), on the user ID
    `<owner>/<repo> RPM Signing Key` when `repo` is set.
 3. The repo-cert key certified the per-run signing key (`pubkey-signing.asc`).
@@ -27,12 +27,12 @@ admits signed releases.
 ```yaml
 - uses: OpenCHAMI/github-actions/actions/gpg-verify-trust-chain@<sha>
   with:
-    master-public-key: ${{ secrets.MASTER_PUBLIC_ASC }}
-    master-fingerprint: ${{ secrets.MASTER_FPR }}
+    public-key-master: ${{ secrets.MASTER_PUBLIC_ASC }}
+    fingerprint-master: ${{ secrets.MASTER_FPR }}
     repo: OpenCHAMI/foo
-    # repo-public-key-file: pubkey-repo.asc
-    # signing-public-key-file: pubkey-signing.asc
+    # public-key-file-repo: pubkey-repo.asc
+    # public-key-file-signing: pubkey-signing.asc
     # files: checksums.txt
 ```
 
-Outputs `master-fingerprint`, `repo-fingerprint`, and `signing-fingerprint`.
+Outputs `fingerprint-master`, `fingerprint-repo`, and `fingerprint-signing`.

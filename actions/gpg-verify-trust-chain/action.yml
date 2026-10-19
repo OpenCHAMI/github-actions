@@ -11,17 +11,17 @@ description: >-
   checksums.txt, not packages.
 
 inputs:
-  master-public-key:
+  public-key-master:
     description: 'ASCII-armored org master public key (e.g. the MASTER_PUBLIC_ASC org secret); never the copy attached to a release'
     required: true
-  master-fingerprint:
+  fingerprint-master:
     description: 'Full fingerprint of the org master key (e.g. the MASTER_FPR org secret); the master public key must match it'
     required: true
-  repo-public-key-file:
+  public-key-file-repo:
     description: 'Repo-cert public key, certified by the master'
     required: false
     default: 'pubkey-repo.asc'
-  signing-public-key-file:
+  public-key-file-signing:
     description: 'Per-run signing public key, certified by the repo-cert key'
     required: false
     default: 'pubkey-signing.asc'
@@ -35,15 +35,15 @@ inputs:
     default: ''
 
 outputs:
-  master-fingerprint:
+  fingerprint-master:
     description: 'Fingerprint of the org master key'
-    value: ${{ steps.verify.outputs.master-fingerprint }}
-  repo-fingerprint:
+    value: ${{ steps.verify.outputs.fingerprint-master }}
+  fingerprint-repo:
     description: 'Fingerprint of the repo-cert key'
-    value: ${{ steps.verify.outputs.repo-fingerprint }}
-  signing-fingerprint:
+    value: ${{ steps.verify.outputs.fingerprint-repo }}
+  fingerprint-signing:
     description: 'Fingerprint of the per-run signing key'
-    value: ${{ steps.verify.outputs.signing-fingerprint }}
+    value: ${{ steps.verify.outputs.fingerprint-signing }}
 
 runs:
   using: composite
@@ -68,10 +68,10 @@ runs:
       id: verify
       shell: bash
       env:
-        MASTER_PUBLIC_KEY: ${{ inputs.master-public-key }}
-        MASTER_FINGERPRINT: ${{ inputs.master-fingerprint }}
-        REPO_KEY_FILE: ${{ inputs.repo-public-key-file }}
-        SIGNING_KEY_FILE: ${{ inputs.signing-public-key-file }}
+        MASTER_PUBLIC_KEY: ${{ inputs.public-key-master }}
+        MASTER_FINGERPRINT: ${{ inputs.fingerprint-master }}
+        REPO_KEY_FILE: ${{ inputs.public-key-file-repo }}
+        SIGNING_KEY_FILE: ${{ inputs.public-key-file-signing }}
         FILES: ${{ inputs.files }}
         REPO: ${{ inputs.repo }}
       run: |
@@ -115,7 +115,7 @@ runs:
           [[ -f "$f" ]] || { echo "::error::Key file not found: $f"; exit 1; }
         done
 
-        master_fpr=$(key_fpr "$master_key") || { echo "::error::master-public-key must hold exactly one public key"; exit 1; }
+        master_fpr=$(key_fpr "$master_key") || { echo "::error::public-key-master must hold exactly one public key"; exit 1; }
         repo_fpr=$(key_fpr "$REPO_KEY_FILE") || { echo "::error::${REPO_KEY_FILE} must hold exactly one public key"; exit 1; }
         signing_fpr=$(key_fpr "$SIGNING_KEY_FILE") || { echo "::error::${SIGNING_KEY_FILE} must hold exactly one public key"; exit 1; }
         echo "Master:  ${master_fpr}"
@@ -123,7 +123,7 @@ runs:
         echo "Signing: ${signing_fpr}"
 
         expected=$(tr -d '[:space:]' <<< "$MASTER_FINGERPRINT")
-        [[ "${expected^^}" == "${master_fpr^^}" ]] || fail "Master public key ${master_fpr} doesn't match master-fingerprint."
+        [[ "${expected^^}" == "${master_fpr^^}" ]] || fail "Master public key ${master_fpr} doesn't match fingerprint-master."
 
         for f in "$master_key" "$REPO_KEY_FILE" "$SIGNING_KEY_FILE"; do
           gpg --batch --quiet --import "$f" 2>/dev/null
@@ -161,8 +161,8 @@ runs:
 
         [[ "$failed" == false ]] || exit 1
         {
-          echo "master-fingerprint=${master_fpr}"
-          echo "repo-fingerprint=${repo_fpr}"
-          echo "signing-fingerprint=${signing_fpr}"
+          echo "fingerprint-master=${master_fpr}"
+          echo "fingerprint-repo=${repo_fpr}"
+          echo "fingerprint-signing=${signing_fpr}"
         } >> "$GITHUB_OUTPUT"
         echo "Trust chain and signatures verified."
