@@ -28,4 +28,21 @@ step fails. Check out the repository first, and grant the job `packages: read`.
 ```
 
 Outputs `names` (space-separated, without registry or owner) and `source`
-(`input`, `goreleaser`, or `repo`).
+(`input`, `goreleaser`, or `repo`). For example, in `OpenCHAMI/foo` with this
+GoReleaser config:
+
+```yaml
+dockers_v2:
+  - images:
+      - ghcr.io/openchami/foo
+      - docker.io/openchami/foo
+  - images:
+      - ghcr.io/openchami/foo-init
+```
+
+the outputs are:
+
+```text
+names=foo foo-init
+source=goreleaser
+```
