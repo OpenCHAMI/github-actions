@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 #
 # Reusable workflow: publishes the draft GitHub Release for a tag once every
-# upstream job has finished attaching its artifacts.
+# upstream job has finished attaching its artifacts. Fails if the release is
+# already published, since it then went public before those jobs finished.
 name: publish-release
 permissions:
   contents: write   # publish the draft GitHub Release
@@ -32,9 +33,18 @@ jobs:
           DRAFT: ${{ inputs.draft }}
           MAKE_LATEST: ${{ inputs.make-latest }}
         run: |
-          release_id=$(gh release view "$TAG" \
+          set -euo pipefail
+          release=$(gh release view "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --json databaseId --jq '.databaseId')
+            --json databaseId,isDraft)
+
+          # A published release went public before every upstream job (e.g.
+          # signing) had attached its files.
+          if [[ $(jq -r .isDraft <<< "$release") != true ]]; then
+            echo "::error::Release ${TAG} is already published; it should still be a draft until publish-release runs."
+            exit 1
+          fi
+          release_id=$(jq -r .databaseId <<< "$release")
 
           gh api --method PATCH \
             "repos/$GITHUB_REPOSITORY/releases/$release_id" \

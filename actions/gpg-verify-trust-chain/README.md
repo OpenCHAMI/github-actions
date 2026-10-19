@@ -5,13 +5,34 @@ SPDX-License-Identifier: MIT
 
 # gpg-verify-trust-chain
 
-> [!CAUTION]
-> **Deprecated.** Replaced by the rpm -K signature check in validate-packages.yml. Kept only for callers pinned to older refs; it will be removed in a future major release.
+Verifies OpenCHAMI's release trust chain and the files it signs:
 
-Verifies the release trust chain (master certifies repo key, repo key
-certifies ephemeral key) and optionally checksigs any RPMs found under
-`rpm-dir`. Standalone: installs its own deps, no prior GPG state assumed.
+1. The master public key matches `master-fingerprint`.
+2. The master certified the repo-cert key (`pubkey-repo.asc`), on the user ID
+   `<owner>/<repo> RPM Signing Key` when `repo` is set.
+3. The repo-cert key certified the per-run signing key (`pubkey-signing.asc`).
+4. Each file in `files` has a good signature at `<file>.asc` from the signing
+   key.
 
-Verification itself is fetched at runtime, pinned to a commit SHA, from
-[gpg-signing-manager](https://github.com/OpenCHAMI/gpg-signing-manager)'s
-`verify-chain.sh`.
+No key may be revoked or expired, so a signature whose 1-day signing key has
+expired fails. Each key file must hold exactly one key. Every failure is
+reported before the step fails. Format-agnostic: it verifies files such as
+`checksums.txt`, not packages. Pass the master public key from a trusted
+source (the `MASTER_PUBLIC_ASC` org secret), never the `pubkey-org.asc`
+attached to a release.
+
+Used by `gpg-sign-artifacts` to check its own output, and by anything that
+admits signed releases.
+
+```yaml
+- uses: OpenCHAMI/github-actions/actions/gpg-verify-trust-chain@<sha>
+  with:
+    master-public-key: ${{ secrets.MASTER_PUBLIC_ASC }}
+    master-fingerprint: ${{ secrets.MASTER_FPR }}
+    repo: OpenCHAMI/foo
+    # repo-public-key-file: pubkey-repo.asc
+    # signing-public-key-file: pubkey-signing.asc
+    # files: checksums.txt
+```
+
+Outputs `master-fingerprint`, `repo-fingerprint`, and `signing-fingerprint`.
