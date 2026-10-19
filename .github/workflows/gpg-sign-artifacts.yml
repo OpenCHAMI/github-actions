@@ -204,8 +204,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Verify trust chain
-        # TODO: pin to the commit that rewrites actions/gpg-verify-trust-chain
-        uses: OpenCHAMI/github-actions/actions/gpg-verify-trust-chain@0000000000000000000000000000000000000000
+        uses: OpenCHAMI/github-actions/actions/gpg-verify-trust-chain@8086901b04dc021e26ba0535776e8014c3046afd # v4.0
         with:
           public-key-master: ${{ secrets.master-public-key }}
           fingerprint-master: ${{ secrets.master-fingerprint }}
