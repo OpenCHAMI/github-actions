@@ -1,0 +1,424 @@
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+#
+# Makefile.common: shared targets for OpenCHAMI repositories.
+#
+# Vendored from https://github.com/OpenCHAMI/github-actions. Don't edit this
+# copy: the lint-makefile-common workflow fails on any difference from the
+# latest release. Change the canonical file upstream instead.
+#
+# Usage (repo Makefile):
+#
+#   PROJECT := foo            # overrides go before the include
+#   include Makefile.common
+#
+#   migrate:                  # repo-only targets go below
+#   	...
+#
+# Extending targets: all, deps, build, run, install, and uninstall are
+# double-colon rules. Add your own rule with the same name and `::`, and both
+# recipes run in order (this file's first):
+#
+#   deps::
+#   	npm ci
+#
+# Don't give an extension rule a `## description` (help would list it twice).
+# Other targets are single-colon; redefining one makes make warn "overriding
+# recipe". To replace build entirely, set BINARIES empty and add a build::.
+#
+# Extra arguments: pass ARGS (make test ARGS="-run TestFoo"). It's appended by
+# test, coverage, lint, lint-fix, vuln, release-snapshot, and build-packages.
+#
+# Targets that don't apply skip with a message: Go targets without go.mod,
+# Fabrica targets without Fabrica, container targets without a Containerfile
+# or Dockerfile, lint-ci without .github/workflows. GNU make 3.81 compatible.
+
+# ---------------------------------------------------------------------------
+# Helpers
+
+# $(call require,<command>[,<install hint>]) as a recipe line: fail with a
+# hint unless <command> is on PATH. Use for anything beyond coreutils, POSIX
+# utilities, and shell builtins.
+define require
+@command -v $(1) >/dev/null 2>&1 || { echo "make: '$(1)' is required but not installed.$(if $(2), $(2))" >&2; exit 1; }
+endef
+
+# $(call skip,<reason>) as a recipe line: say why a target does nothing.
+define skip
+@echo "$@: $(1), skipping"
+endef
+
+GO_MOD := $(wildcard go.mod)
+
+# ---------------------------------------------------------------------------
+# Variables (override before the include). Defaults that run a command are
+# computed once (`?=` would re-run them on every use) and fall back to empty.
+
+PROJECT ?= $(notdir $(CURDIR))
+
+GO ?= go
+
+ifndef VERSION
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+endif
+ifndef TAG
+TAG := $(or $(shell git describe --tags --always --abbrev=0 2>/dev/null),unknown)
+endif
+ifndef BRANCH
+BRANCH := $(or $(shell git branch --show-current 2>/dev/null),unknown)
+endif
+ifndef COMMIT
+COMMIT := $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+endif
+ifndef BUILD_DATETIME
+BUILD_DATETIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
+endif
+ifndef GIT_STATE
+GIT_STATE := $(shell git diff-index --quiet HEAD -- 2>/dev/null && echo clean || echo dirty)
+endif
+ifndef BUILD_HOST
+BUILD_HOST := $(shell hostname 2>/dev/null)
+endif
+ifndef BUILD_USER
+BUILD_USER := $(shell whoami 2>/dev/null)
+endif
+ifndef GO_VERSION
+GO_VERSION := $(shell $(GO) env GOVERSION 2>/dev/null)
+endif
+IS_PR_BUILD ?= false
+
+# GoReleaser configs read these as {{ .Env.* }}; build-release-goreleaser sets
+# the same names in CI.
+export GIT_STATE BUILD_HOST GO_VERSION BUILD_USER IS_PR_BUILD
+
+# Go version from go.mod: the toolchain line, else the go line.
+ifndef GO_TOOLCHAIN_VERSION
+GO_TOOLCHAIN_VERSION := $(shell awk '$$1 == "toolchain" { sub(/^go/, "", $$2); t = $$2 } $$1 == "go" { g = $$2 } END { print (t != "" ? t : g) }' go.mod 2>/dev/null)
+endif
+
+ifndef GO_MODULE
+GO_MODULE := $(shell awk '$$1 == "module" { print $$2; exit }' go.mod 2>/dev/null)
+endif
+
+GO_BUILD_FLAGS ?= -v
+
+# Build info for the version package (OpenCHAMI convention: internal/version
+# with these variables). Variables the package doesn't declare are ignored by
+# the linker.
+GO_VERSION_PACKAGE ?= $(GO_MODULE)/internal/version
+GO_LDFLAGS ?= \
+	-X '$(GO_VERSION_PACKAGE).Version=$(VERSION)' \
+	-X '$(GO_VERSION_PACKAGE).Tag=$(TAG)' \
+	-X '$(GO_VERSION_PACKAGE).Branch=$(BRANCH)' \
+	-X '$(GO_VERSION_PACKAGE).Commit=$(COMMIT)' \
+	-X '$(GO_VERSION_PACKAGE).Date=$(BUILD_DATETIME)' \
+	-X '$(GO_VERSION_PACKAGE).GoVersion=$(GO_VERSION)' \
+	-X '$(GO_VERSION_PACKAGE).GitState=$(GIT_STATE)' \
+	-X '$(GO_VERSION_PACKAGE).BuildHost=$(BUILD_HOST)' \
+	-X '$(GO_VERSION_PACKAGE).BuildUser=$(BUILD_USER)'
+TEST_TIMEOUT ?= 15m
+ARGS ?=
+
+# Binaries as name:path pairs; default one per cmd/ subdirectory.
+BINARIES ?= $(foreach name,$(patsubst cmd/%/,%,$(wildcard cmd/*/)),$(name):./cmd/$(name))
+RUN_BINARY ?= $(firstword $(subst :, ,$(firstword $(BINARIES))))
+
+ifndef CONTAINER_ENGINE
+CONTAINER_ENGINE := $(or $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null),podman)
+endif
+# install/uninstall destination (GNU conventions; DESTDIR for staging).
+prefix ?= /usr/local
+exec_prefix ?= $(prefix)
+bindir ?= $(exec_prefix)/bin
+
+CONTAINERFILE ?= $(firstword $(wildcard Containerfile Dockerfile))
+CONTAINER_TAG ?= latest
+CONTAINER_IMAGE_FQCN ?= ghcr.io/openchami/$(PROJECT):$(CONTAINER_TAG)
+
+# lint-ci runs these images with CONTAINER_ENGINE instead of local installs.
+ACTIONLINT_IMAGE ?= docker.io/rhysd/actionlint:1.7.12
+ZIZMOR_IMAGE ?= ghcr.io/zizmorcore/zizmor:1.30.1
+
+REUSE_COPYRIGHT ?= OpenCHAMI a Series of LF Projects, LLC
+REUSE_LICENSE ?= MIT
+ifndef REUSE_YEAR
+REUSE_YEAR := $(shell date +%Y 2>/dev/null)
+endif
+
+# Fabrica code generation. lint-codegen-fabrica sets LOCAL_FABRICA and
+# FABRICA_SOURCE_ARG.
+LOCAL_FABRICA ?=
+ifndef FABRICA_VERSION
+FABRICA_VERSION := $(shell awk '{ for (i = 1; i < NF; i++) if ($$i == "github.com/openchami/fabrica") { print $$(i + 1); exit } }' go.mod 2>/dev/null)
+endif
+ifneq ($(strip $(LOCAL_FABRICA)),)
+FABRICA_CMD ?= $(LOCAL_FABRICA)/bin/fabrica
+FABRICA_SOURCE_ARG ?= --fabrica-source $(LOCAL_FABRICA)
+FABRICA_FORCE_FLAG ?= --force
+FABRICA_ENV ?= GOTOOLCHAIN=auto
+else
+FABRICA_CMD ?= $(GO) run github.com/openchami/fabrica/cmd/fabrica@$(FABRICA_VERSION)
+endif
+USES_FABRICA := $(strip $(LOCAL_FABRICA)$(FABRICA_VERSION))
+
+GORELEASER_CONFIG := $(firstword $(wildcard .config/goreleaser.yml .config/goreleaser.yaml .goreleaser.yml .goreleaser.yaml goreleaser.yml goreleaser.yaml))
+
+CLEANFILES ?= bin/ dist/ coverage.out coverage.html reuse.spdx
+
+# ---------------------------------------------------------------------------
+# Targets
+
+.PHONY: help
+help: ## List targets
+	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "\033[36m%-24s\033[0m %s\n", $$1, $$2}'
+
+.PHONY: all
+all:: deps lint test build ## Install dependencies, lint, test, and build
+
+.PHONY: deps
+deps:: ## Install development dependencies (repos add steps)
+ifneq ($(GO_MOD),)
+	$(call require,$(GO))
+	$(GO) mod download
+	$(GO) mod verify
+endif
+
+.PHONY: fmt
+fmt: ## Format Go code
+ifeq ($(GO_MOD),)
+	$(call skip,no go.mod)
+else
+	$(call require,$(GO))
+	$(GO) fmt ./...
+endif
+
+.PHONY: vet
+vet: ## Run go vet
+ifeq ($(GO_MOD),)
+	$(call skip,no go.mod)
+else
+	$(call require,$(GO))
+	$(GO) vet ./...
+endif
+
+.PHONY: tidy
+tidy: ## Tidy go.mod and go.sum
+ifeq ($(GO_MOD),)
+	$(call skip,no go.mod)
+else
+	$(call require,$(GO))
+	$(GO) mod tidy
+endif
+
+.PHONY: test
+test: ## Run unit tests
+ifeq ($(GO_MOD),)
+	$(call skip,no go.mod)
+else
+	$(call require,$(GO))
+	$(GO) test $(GO_BUILD_FLAGS) -timeout $(TEST_TIMEOUT) -race ./... $(ARGS)
+endif
+
+.PHONY: coverage
+coverage: ## Run unit tests with coverage (coverage.out, coverage.html)
+ifeq ($(GO_MOD),)
+	$(call skip,no go.mod)
+else
+	$(call require,$(GO))
+	$(GO) test $(GO_BUILD_FLAGS) -timeout $(TEST_TIMEOUT) -race -coverprofile=coverage.out -covermode=atomic ./... $(ARGS)
+	$(GO) tool cover -html=coverage.out -o coverage.html
+endif
+
+.PHONY: lint
+lint: ## Run golangci-lint
+ifeq ($(GO_MOD),)
+	$(call skip,no go.mod)
+else
+	$(call require,golangci-lint,See https://golangci-lint.run/welcome/install/)
+	GOTOOLCHAIN=go$(GO_TOOLCHAIN_VERSION) golangci-lint run $(ARGS)
+endif
+
+.PHONY: lint-fix
+lint-fix: ## Run golangci-lint with --fix
+ifeq ($(GO_MOD),)
+	$(call skip,no go.mod)
+else
+	$(call require,golangci-lint,See https://golangci-lint.run/welcome/install/)
+	GOTOOLCHAIN=go$(GO_TOOLCHAIN_VERSION) golangci-lint run --fix $(ARGS)
+endif
+
+.PHONY: vuln
+vuln: ## Scan Go modules for known vulnerabilities
+ifeq ($(GO_MOD),)
+	$(call skip,no go.mod)
+else
+	$(call require,govulncheck,Install with: go install golang.org/x/vuln/cmd/govulncheck@latest)
+	govulncheck $(ARGS) ./...
+endif
+
+.PHONY: lint-ci
+lint-ci: ## Lint GitHub Actions workflows with actionlint and zizmor (in containers)
+ifeq ($(wildcard .github/workflows),)
+	$(call skip,no .github/workflows)
+else
+	$(call require,$(CONTAINER_ENGINE),Install podman or docker.)
+	$(CONTAINER_ENGINE) run --rm --user 0:0 -v "$(CURDIR):/repo:ro,z" -w /repo $(ACTIONLINT_IMAGE) -color
+	$(CONTAINER_ENGINE) run --rm --user 0:0 -v "$(CURDIR):/repo:ro,z" -w /repo -e GH_TOKEN $(ZIZMOR_IMAGE) .
+endif
+
+.PHONY: build
+build:: ## Build BINARIES into bin/
+ifeq ($(strip $(BINARIES)),)
+	$(call skip,no BINARIES)
+else
+	$(call require,$(GO))
+	@for b in $(BINARIES); do \
+		name=$${b%%:*}; path=$${b#*:}; \
+		echo "$(GO) build $(GO_BUILD_FLAGS) -o bin/$$name $$path"; \
+		$(GO) build $(GO_BUILD_FLAGS) -ldflags "$(GO_LDFLAGS)" -o bin/$$name $$path || exit 1; \
+	done
+endif
+
+.PHONY: run
+run:: build ## Build and run RUN_BINARY
+ifeq ($(strip $(RUN_BINARY)),)
+	$(call skip,no RUN_BINARY)
+else
+	./bin/$(RUN_BINARY)
+endif
+
+.PHONY: install
+install:: ## Install built BINARIES into $(DESTDIR)$(bindir) (run make build first)
+ifeq ($(strip $(BINARIES)),)
+	$(call skip,no BINARIES)
+else
+	@for b in $(BINARIES); do \
+		name=$${b%%:*}; \
+		[ -f bin/$$name ] || { echo "$@: bin/$$name not found; run make build first" >&2; exit 1; }; \
+	done
+	install -d $(DESTDIR)$(bindir)
+	@for b in $(BINARIES); do \
+		name=$${b%%:*}; \
+		echo "install -m 0755 bin/$$name $(DESTDIR)$(bindir)/$$name"; \
+		install -m 0755 bin/$$name $(DESTDIR)$(bindir)/$$name || exit 1; \
+	done
+endif
+
+.PHONY: uninstall
+uninstall:: ## Remove BINARIES from $(DESTDIR)$(bindir)
+ifeq ($(strip $(BINARIES)),)
+	$(call skip,no BINARIES)
+else
+	@for b in $(BINARIES); do \
+		name=$${b%%:*}; \
+		echo "rm -f $(DESTDIR)$(bindir)/$$name"; \
+		rm -f $(DESTDIR)$(bindir)/$$name; \
+	done
+endif
+
+.PHONY: generate
+generate: ## Regenerate Fabrica code
+ifeq ($(USES_FABRICA),)
+	$(call skip,Fabrica not in go.mod and LOCAL_FABRICA unset)
+else
+ifneq ($(strip $(LOCAL_FABRICA)),)
+	@if [ ! -x $(LOCAL_FABRICA)/bin/fabrica ]; then \
+		echo "Local Fabrica binary not found at $(LOCAL_FABRICA)/bin/fabrica" >&2; \
+		echo "Build it with: (cd $(LOCAL_FABRICA) && go build -o bin/fabrica ./cmd/fabrica)" >&2; \
+		exit 1; \
+	fi
+else
+	$(call require,$(GO))
+endif
+	$(FABRICA_ENV) $(FABRICA_CMD) generate $(FABRICA_SOURCE_ARG) $(FABRICA_FORCE_FLAG)
+endif
+
+.PHONY: generate-check
+generate-check: ## Fail if generated Fabrica code is out of date (exit 2: dirty tree, 1: out of date)
+ifeq ($(USES_FABRICA),)
+	$(call skip,Fabrica not in go.mod and LOCAL_FABRICA unset)
+else
+	$(call require,git)
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Working tree must be clean before running generate-check."; \
+		echo "Commit or stash local changes, then re-run make generate-check."; \
+		exit 2; \
+	fi
+	@$(MAKE) --no-print-directory generate LOCAL_FABRICA="$(LOCAL_FABRICA)"
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Generated files are out of date. Run 'make generate' and commit results."; \
+		git --no-pager status --short; \
+		exit 1; \
+	fi
+endif
+
+.PHONY: container-build
+container-build: ## Build the container image (CONTAINER_IMAGE_FQCN)
+ifeq ($(strip $(CONTAINERFILE)),)
+	$(call skip,no Containerfile or Dockerfile)
+else
+	$(call require,$(CONTAINER_ENGINE),Install podman or docker.)
+	$(CONTAINER_ENGINE) build -f $(CONTAINERFILE) \
+		--build-arg GO_VERSION=$(GO_TOOLCHAIN_VERSION) \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg DATE=$(BUILD_DATETIME) \
+		-t $(CONTAINER_IMAGE_FQCN) .
+endif
+
+.PHONY: container-run
+container-run: container-build ## Build and run the container image
+ifeq ($(strip $(CONTAINERFILE)),)
+	$(call skip,no Containerfile or Dockerfile)
+else
+	$(CONTAINER_ENGINE) run --rm $(CONTAINER_IMAGE_FQCN)
+endif
+
+.PHONY: release-snapshot
+release-snapshot: ## Full local GoReleaser dry run (binaries, packages, images)
+ifeq ($(GORELEASER_CONFIG),)
+	@echo "$@: no GoReleaser config found (.goreleaser.yaml or equivalent)" >&2; exit 1
+else
+	$(call require,goreleaser,See https://goreleaser.com/install/)
+	goreleaser release --snapshot --clean $(ARGS)
+endif
+
+.PHONY: build-packages
+build-packages: ## Build all packages with GoReleaser (no images or archives)
+ifeq ($(GORELEASER_CONFIG),)
+	@echo "$@: no GoReleaser config found (.goreleaser.yaml or equivalent)" >&2; exit 1
+else
+	$(call require,goreleaser,See https://goreleaser.com/install/)
+	goreleaser release --snapshot --clean --skip=docker,archive $(ARGS)
+endif
+
+.PHONY: reuse-check
+reuse-check: ## Check REUSE compliance
+	$(call require,reuse,See https://reuse.software/)
+	reuse lint --lines
+
+.PHONY: reuse-annotate
+reuse-annotate: ## Add missing SPDX headers (never rewrites existing ones)
+	$(call require,reuse,See https://reuse.software/)
+	reuse annotate --copyright="$(REUSE_COPYRIGHT)" --copyright-prefix=spdx-symbol \
+		--license=$(REUSE_LICENSE) --year=$(REUSE_YEAR) \
+		--skip-existing --fallback-dot-license --recursive .
+
+.PHONY: reuse-download-license
+reuse-download-license: ## Download a license text (LICENSE=MIT)
+	@if [ -z "$(LICENSE)" ]; then echo "Usage: make $@ LICENSE=<SPDX id>" >&2; exit 1; fi
+	$(call require,reuse,See https://reuse.software/)
+	reuse download $(LICENSE)
+
+.PHONY: reuse-spdx
+reuse-spdx: ## Write an SPDX bill of materials (reuse.spdx)
+	$(call require,reuse,See https://reuse.software/)
+	reuse spdx -o reuse.spdx
+
+.PHONY: clean
+clean: ## Remove CLEANFILES and the Go build cache
+	rm -rf $(CLEANFILES)
+ifneq ($(GO_MOD),)
+	$(call require,$(GO))
+	$(GO) clean -cache
+endif
