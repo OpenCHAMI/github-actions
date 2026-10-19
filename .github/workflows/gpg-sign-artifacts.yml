@@ -207,10 +207,10 @@ jobs:
         # TODO: pin to the commit that rewrites actions/gpg-verify-trust-chain
         uses: OpenCHAMI/github-actions/actions/gpg-verify-trust-chain@0000000000000000000000000000000000000000
         with:
-          master-public-key: ${{ secrets.master-public-key }}
-          master-fingerprint: ${{ secrets.master-fingerprint }}
-          repo-public-key-file: dist/pubkey-repo.asc
-          signing-public-key-file: dist/pubkey-signing.asc
+          public-key-master: ${{ secrets.master-public-key }}
+          fingerprint-master: ${{ secrets.master-fingerprint }}
+          public-key-file-repo: dist/pubkey-repo.asc
+          public-key-file-signing: dist/pubkey-signing.asc
           files: ${{ steps.signed.outputs.files }}
           repo: ${{ github.repository }}
 

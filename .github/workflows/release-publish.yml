@@ -4,7 +4,7 @@
 # Reusable workflow: publishes the draft GitHub Release for a tag once every
 # upstream job has finished attaching its artifacts. Fails if the release is
 # already published, since it then went public before those jobs finished.
-name: publish-release
+name: release-publish
 permissions:
   contents: write   # publish the draft GitHub Release
 on:
@@ -23,7 +23,7 @@ on:
         default: false
         required: false
 jobs:
-  publish-release:
+  release-publish:
     runs-on: ubuntu-slim
     steps:
       - name: Publish release
@@ -41,7 +41,7 @@ jobs:
           # A published release went public before every upstream job (e.g.
           # signing) had attached its files.
           if [[ $(jq -r .isDraft <<< "$release") != true ]]; then
-            echo "::error::Release ${TAG} is already published; it should still be a draft until publish-release runs."
+            echo "::error::Release ${TAG} is already published; it should still be a draft until release-publish runs."
             exit 1
           fi
           release_id=$(jq -r .databaseId <<< "$release")

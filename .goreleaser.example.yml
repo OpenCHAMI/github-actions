@@ -31,7 +31,7 @@
 # handled by a separate post-release workflow, which is easier to manage than
 # GoReleaser's `blob:` / `publishers:` (or Pro-only hosted integrations):
 # repository metadata spans all packages and releases, and publishing runs
-# only after validation and publish-release.
+# only after validation and release-publish.
 #
 # Environment provided by the workflows (always set, so templates can rely on
 # them; set them yourself when running goreleaser locally):
@@ -296,7 +296,7 @@ nfpms:
 
 # The workflows control draft state and notes: build-release-goreleaser passes
 # `--draft` (input `release-draft`, default true; publish later with
-# publish-release) and GitHub's generated notes via `--release-notes`
+# release-publish) and GitHub's generated notes via `--release-notes`
 # (input `generate-release-notes`), which replace the changelog below.
 # `header` / `footer` are added around those notes.
 #
