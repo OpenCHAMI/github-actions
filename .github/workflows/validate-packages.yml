@@ -10,9 +10,6 @@ name: validate-packages
 # - the file list is exactly what the caller expects (regular files and
 #   symlinks only: dpkg owns parent directories implicitly, and rpm matches so
 #   one spec covers both)
-# - the rpm signature verifies against the gpg-public-key.asc that
-#   build-release-goreleaser puts in the artifact when it signs (skipped when
-#   absent, e.g. PR/check builds or no gpg-key)
 # - the package installs (`dnf install` / `apt-get install`), which resolves
 #   dependencies and runs scriptlets, and every expected path exists afterward
 # - rpmlint / lintian, report-only
@@ -145,23 +142,6 @@ jobs:
           fi
           jq -r '.[]' <<< "$FILES" | sort | grep -v '^$' > /tmp/expected-files.txt
           diff /tmp/expected-files.txt /tmp/actual-files.txt
-
-      - name: Verify signature
-        run: |
-          set -euo pipefail
-          key=dist/gpg-public-key.asc
-          if [[ ! -f "$key" ]]; then
-            echo "::notice::no gpg-public-key.asc in the artifact (unsigned build); signature not checked"
-            exit 0
-          fi
-          if [[ "$PKG_FORMAT" != rpm ]]; then
-            echo "::notice::deb packages are not signature-checked"
-            exit 0
-          fi
-          rpm --import "$key"
-          out=$(rpm -K "$PKG")
-          echo "$out"
-          grep -q 'signatures OK' <<< "$out"
 
       - name: Install package
         run: |

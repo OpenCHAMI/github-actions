@@ -9,7 +9,7 @@ name: build-check-goreleaser
 # is safe for fork PRs. Use build-release-goreleaser to publish.
 #
 # Sets the same environment as build-release-goreleaser (GIT_STATE,
-# BUILD_HOST, GO_VERSION, BUILD_USER, IS_PR_BUILD=true, GPG_KEY_PATH empty) so
+# BUILD_HOST, GO_VERSION, BUILD_USER, IS_PR_BUILD=true) so
 # the same .goreleaser.yaml works in both.
 
 on:
@@ -109,7 +109,6 @@ jobs:
           BUILD_HOST: ${{ steps.build-env.outputs.build-host }}
           GO_VERSION: ${{ steps.build-env.outputs.go-version }}
           BUILD_USER: ${{ steps.build-env.outputs.build-user }}
-          GPG_KEY_PATH: ''
         with:
           distribution: goreleaser
           version: ${{ inputs.goreleaser-version }}
