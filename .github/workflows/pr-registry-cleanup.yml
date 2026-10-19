@@ -74,11 +74,13 @@ jobs:
           BASE_TAG: pr-${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
+          # Nested package names (tools/foo) need their slash encoded.
+          encoded=$(jq -rn --arg name "$PACKAGE" '$name | @uri')
           # A version is ours when one of its tags is the base tag itself or the
           # base tag plus a separated qualifier (pr-12, pr-12-arm64,
           # pr-12-dirty-abc123). Requiring the separator keeps a cleanup of
           # pr-12 away from pr-123.
-          versions=$(gh api --paginate "/orgs/${OWNER}/packages/container/${PACKAGE}/versions" \
+          versions=$(gh api --paginate "/orgs/${OWNER}/packages/container/${encoded}/versions" \
             | jq -r --arg base "${BASE_TAG}" '
                 .[]
                 | select(
@@ -99,7 +101,7 @@ jobs:
           failed=false
           while read -r version_id; do
             echo "Deleting version ${version_id}"
-            if ! gh api --method DELETE "/orgs/${OWNER}/packages/container/${PACKAGE}/versions/${version_id}"; then
+            if ! gh api --method DELETE "/orgs/${OWNER}/packages/container/${encoded}/versions/${version_id}"; then
               echo "::error::Can't delete version ${version_id} of ghcr.io package '${PACKAGE}'."
               failed=true
             fi
