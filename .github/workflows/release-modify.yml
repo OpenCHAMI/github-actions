@@ -4,7 +4,7 @@
 name: release-modify
 
 # Reusable workflow: edits the draft GitHub Release for the triggering tag
-# before publish-release makes it public. Appends to or replaces the release
+# before release-publish makes it public. Appends to or replaces the release
 # notes, and adds or replaces release files from an artifact. Knows nothing
 # about what it attaches (e.g. gpg-sign-artifacts' signatures and its
 # `release-notes` output).

@@ -52,7 +52,7 @@ on:
         type: number
         default: 0
       release-draft:
-        description: 'Create the GitHub release as a draft (publish it later with publish-release)'
+        description: 'Create the GitHub release as a draft (publish it later with release-publish)'
         required: false
         type: boolean
         default: true
