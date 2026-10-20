@@ -1,0 +1,207 @@
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+name: lint-docs
+
+# Reusable workflow that checks the caller's docs for broken links with
+# lychee. Never fails on broken links; it reports them instead:
+#
+# - Pull requests that change docs: findings go to code scanning as SARIF
+#   (category lint-docs), so GitHub annotates the PR and closes each alert
+#   once a later commit fixes the link. Fork PRs can't upload, so they only
+#   get the job summary.
+# - Default branch (push, schedule, or dispatch): one open issue with the
+#   report, created or updated each run, and closed once the links are fixed.
+#   The SARIF upload also runs, so PR alerts have a baseline to compare with.
+#
+# Checks lychee-action's default inputs (every .md, .html, and .rst file).
+# Fails only when lychee itself errors (e.g. a bad config). Callers configure
+# lychee with their own lychee.toml and .lycheeignore at the repository root.
+
+on:
+  workflow_call:
+    inputs:
+      issue-title:
+        description: 'Title of the issue that tracks broken links on the default branch'
+        required: false
+        type: string
+        default: 'Docs link check found broken links'
+
+permissions:
+  contents: read   # baseline for checkout
+
+jobs:
+  lint-docs:
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    permissions:
+      contents: read          # baseline for checkout
+      pull-requests: read     # list the PR's changed files
+      security-events: write  # SARIF upload to GHAS
+    outputs:
+      report-issue: ${{ steps.mode.outputs.report-issue }}
+      broken: ${{ steps.report.outputs.broken }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Decide what to report
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          check=true
+          report_issue=false
+          if [[ "$EVENT" == pull_request || "$EVENT" == pull_request_target ]]; then
+            # Not piped into grep -q: its early exit fails gh with SIGPIPE.
+            files=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
+            if ! grep -qiE '\.(md|markdown|html?|rst)$' <<< "$files"; then
+              echo "The PR changes no docs; nothing to check."
+              check=false
+            fi
+          elif [[ "$GITHUB_REF_NAME" == "$(gh api "repos/${GITHUB_REPOSITORY}" --jq .default_branch)" ]]; then
+            report_issue=true
+          fi
+          echo "check=${check}" >> "$GITHUB_OUTPUT"
+          echo "report-issue=${report_issue}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ steps.mode.outputs.check == 'true' }}
+        with:
+          persist-credentials: false
+
+      - name: Check links
+        id: lychee
+        if: ${{ steps.mode.outputs.check == 'true' }}
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          format: json
+          output: ${{ runner.temp }}/lychee.json
+          fail: false          # broken links are reported, not failed on
+          failIfEmpty: false
+          jobSummary: false    # markdown only; the report below writes the summary
+          checkbox: false      # markdown only
+
+      - name: Build reports
+        id: report
+        if: ${{ steps.mode.outputs.check == 'true' }}
+        env:
+          LYCHEE_EXIT: ${{ steps.lychee.outputs.exit_code }}
+          BLOB_URL: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # 0: all links fine, 2: broken links, else lychee failed. Usage errors
+          # also exit 2, but leave no JSON report.
+          if [[ "$LYCHEE_EXIT" != 0 && "$LYCHEE_EXIT" != 2 ]] || [[ ! -s "${RUNNER_TEMP}/lychee.json" ]]; then
+            echo "::error::lychee failed (exit ${LYCHEE_EXIT})."
+            exit 1
+          fi
+          # One finding per broken link, with local file URLs made repo-relative.
+          jq --arg root "file://${GITHUB_WORKSPACE}/" '
+            [ (.error_map // {} | to_entries[] | .value[] + {file: .key, kind: "error"}),
+              (.timeout_map // {} | to_entries[] | .value[] + {file: .key, kind: "timeout"}) ]
+            | map({file, kind, line: (.span.line // 1), column: (.span.column // 1),
+                   url: (.url | ltrimstr($root)), status: .status.text})
+          ' "${RUNNER_TEMP}/lychee.json" > "${RUNNER_TEMP}/findings.json"
+
+          jq '{
+            version: "2.1.0",
+            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+            runs: [{
+              tool: {driver: {
+                name: "lychee",
+                informationUri: "https://github.com/lycheeverse/lychee",
+                rules: [
+                  {id: "broken-link", shortDescription: {text: "Broken link"},
+                   help: {text: "The link target is missing or returned an error. Fix or remove the link, or exclude it in .lycheeignore or lychee.toml."},
+                   defaultConfiguration: {level: "error"}},
+                  {id: "link-timeout", shortDescription: {text: "Link timed out"},
+                   help: {text: "The link target did not respond in time. It may be down, or slow to answer."},
+                   defaultConfiguration: {level: "warning"}}
+                ]}},
+              results: map({
+                ruleId: (if .kind == "error" then "broken-link" else "link-timeout" end),
+                level: (if .kind == "error" then "error" else "warning" end),
+                message: {text: "\(.url): \(.status)"},
+                locations: [{physicalLocation: {
+                  artifactLocation: {uri: .file},
+                  region: {startLine: .line, startColumn: .column}}}]
+              })
+            }]
+          }' "${RUNNER_TEMP}/findings.json" > "${RUNNER_TEMP}/lychee.sarif"
+
+          jq -r --arg blob "$BLOB_URL" --arg run "$RUN_URL" '
+            if length == 0 then "No broken links found." else
+              "Found \(map(select(.kind == "error")) | length) broken links and \(map(select(.kind == "timeout")) | length) timeouts ([run](\($run))).",
+              (group_by(.file)[] | "", "### `\(.[0].file)`", "",
+                (sort_by(.line)[] | "- [line \(.line)](\($blob)/\(.file)?plain=1#L\(.line)): \(.url) (\(.status))"))
+            end
+          ' "${RUNNER_TEMP}/findings.json" > "${RUNNER_TEMP}/report.md"
+          cat "${RUNNER_TEMP}/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+          # Timeouts alone don't open an issue: they are usually transient.
+          echo "broken=$(jq 'any(.kind == "error")' "${RUNNER_TEMP}/findings.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload SARIF to GHAS
+        # Fork PRs get a read-only token, so the upload would fail.
+        if: >-
+          steps.mode.outputs.check == 'true'
+          && (github.event.pull_request.head.repo.full_name == github.repository
+              || github.event_name != 'pull_request')
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: ${{ runner.temp }}/lychee.sarif
+          category: lint-docs
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ steps.mode.outputs.report-issue == 'true' }}
+        with:
+          name: lint-docs-report
+          path: ${{ runner.temp }}/report.md
+          retention-days: 1
+
+  report-issue:
+    needs: lint-docs
+    if: ${{ needs.lint-docs.outputs.report-issue == 'true' }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    permissions:
+      issues: write   # create, update, or close the broken-links issue
+    # Runs one at a time, so two runs can't both create the issue.
+    concurrency:
+      group: lint-docs-issue-${{ github.repository }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TITLE: ${{ inputs.issue-title }}
+      BROKEN: ${{ needs.lint-docs.outputs.broken }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: lint-docs-report
+          path: ${{ runner.temp }}/lint-docs
+
+      - name: Create, update, or close the issue
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          report="${RUNNER_TEMP}/lint-docs/report.md"
+          issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title |
+            jq -r '[.[] | select(.title == env.TITLE)][0].number // empty')
+          if [[ "$BROKEN" == true ]]; then
+            if [[ -n "$issue" ]]; then
+              gh issue edit "$issue" --repo "$GITHUB_REPOSITORY" --body-file "$report"
+              echo "Updated issue #${issue}."
+            else
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file "$report"
+            fi
+          elif [[ -n "$issue" ]]; then
+            gh issue close "$issue" --repo "$GITHUB_REPOSITORY" \
+              --comment "No broken links found as of ${GITHUB_SHA} ([run](${RUN_URL}))."
+            echo "Closed issue #${issue}."
+          else
+            echo "No broken links and no open issue."
+          fi

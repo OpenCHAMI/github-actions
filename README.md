@@ -29,6 +29,7 @@ Reusable GitHub Actions for CI/CD.
 - [`.github/workflows/stale.yml`](docs/workflows.md#stale): Reusable workflow that marks and closes inactive issues and PRs (org-default policy)
 - [`.github/workflows/lint-codegen-fabrica.yml`](docs/workflows.md#lint-codegen-fabrica): Reusable workflow that fails when a Fabrica project's committed generated code is out of date
 - [`.github/workflows/lint-renovate.yml`](docs/workflows.md#lint-renovate): Reusable workflow that validates the caller's Renovate config
+- [`.github/workflows/lint-docs.yml`](docs/workflows.md#lint-docs): Reusable workflow that checks docs for broken links (lychee), reporting on PRs and in an issue
 - [`.github/workflows/lint-makefile-common.yml`](docs/workflows.md#lint-makefile-common): Reusable workflow that fails when a repo's vendored `Makefile.common` differs from the latest release
 - [`Makefile.common`](docs/makefile-common.md): Shared Makefile targets that OpenCHAMI repos vendor and include
 
