@@ -103,6 +103,15 @@ runs:
                 END { exit !found }'
         }
 
+        # On a failed certification check, print what the subject key does
+        # carry: its user IDs and who certified each (all public data).
+        show_certs() {
+          echo "Expected certifier key ID: ${1: -16}"
+          echo "User IDs and certifications on ${2} (! good, ? certifier not the expected key, - bad):"
+          gpg --batch --with-colons --check-sigs "$2" 2>/dev/null \
+            | awk -F: '$1=="uid" {print "  uid: " $10} $1=="sig" {print "    sig " $2 " by " $5}'
+        }
+
         # 0 when the key is neither revoked nor expired.
         usable() {
           gpg --batch --with-colons --list-keys "$1" 2>/dev/null \
@@ -135,10 +144,14 @@ runs:
 
         identity=''
         [[ -n "$REPO" ]] && identity="${REPO} RPM Signing Key"
-        certified_by "$master_fpr" "$repo_fpr" "$identity" \
-          || fail "Master ${master_fpr} hasn't certified repo-cert key ${repo_fpr}${identity:+ as '${identity}'}."
-        certified_by "$repo_fpr" "$signing_fpr" '' \
-          || fail "Repo-cert key ${repo_fpr} hasn't certified signing key ${signing_fpr}."
+        if ! certified_by "$master_fpr" "$repo_fpr" "$identity"; then
+          fail "Master ${master_fpr} hasn't certified repo-cert key ${repo_fpr}${identity:+ as '${identity}'}."
+          show_certs "$master_fpr" "$repo_fpr"
+        fi
+        if ! certified_by "$repo_fpr" "$signing_fpr" ''; then
+          fail "Repo-cert key ${repo_fpr} hasn't certified signing key ${signing_fpr}."
+          show_certs "$repo_fpr" "$signing_fpr"
+        fi
 
         # shellcheck disable=SC2086 # intentional word splitting
         set -- $FILES
