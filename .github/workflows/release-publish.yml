@@ -46,7 +46,9 @@ jobs:
           fi
           release_id=$(jq -r .databaseId <<< "$release")
 
+          # Without tag_name, the PATCH resets the draft's tag to untagged-<hash>.
           gh api --method PATCH \
             "repos/$GITHUB_REPOSITORY/releases/$release_id" \
             -F "draft=$DRAFT" \
+            -f "tag_name=$TAG" \
             -f "make_latest=$MAKE_LATEST"
