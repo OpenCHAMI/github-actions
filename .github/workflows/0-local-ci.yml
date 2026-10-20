@@ -23,3 +23,11 @@ jobs:
 
   lint-renovate:
     uses: $/.github/workflows/lint-renovate.yml
+
+  lint-docs:
+    uses: $/.github/workflows/lint-docs.yml
+    permissions:
+      contents: read          # baseline for checkout
+      pull-requests: read     # list the PR's changed files
+      security-events: write  # SARIF upload to GHAS
+      issues: write           # broken-links issue on the default branch
