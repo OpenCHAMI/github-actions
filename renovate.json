@@ -7,10 +7,10 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Default renovate-config-validator version in lint-renovate and its README example",
+      "description": "Default renovate-config-validator version in lint-renovate and its docs example",
       "managerFilePatterns": [
         "/^\\.github/workflows/lint-renovate\\.yml$/",
-        "/^README\\.md$/"
+        "/^README\\.md$/", "/^docs/.+\\.md$/"
       ],
       "matchStrings": [
         "renovate-version:\\s*\\n(?:\\s+[a-z]+:.*\\n)*?\\s+default: '(?<currentValue>\\d+\\.\\d+\\.\\d+)'",
@@ -41,8 +41,8 @@
     },
     {
       "customType": "regex",
-      "description": "Version examples in the README",
-      "managerFilePatterns": ["/^README\\.md$/"],
+      "description": "Version examples in the README and docs",
+      "managerFilePatterns": ["/^README\\.md$/", "/^docs/.+\\.md$/"],
       "matchStrings": [
         "#\\s+reuse-version: (?<currentValue>\\d+\\.\\d+\\.\\d+)",
         "Pins `reuse` (?<currentValue>\\d+\\.\\d+\\.\\d+)"
@@ -52,16 +52,16 @@
     },
     {
       "customType": "regex",
-      "description": "Version examples in the README",
-      "managerFilePatterns": ["/^README\\.md$/"],
+      "description": "Version examples in the README and docs",
+      "managerFilePatterns": ["/^README\\.md$/", "/^docs/.+\\.md$/"],
       "matchStrings": ["#\\s+goreleaser-version: (?<currentValue>v\\d+\\.\\d+\\.\\d+)"],
       "depNameTemplate": "goreleaser/goreleaser",
       "datasourceTemplate": "github-releases"
     },
     {
       "customType": "regex",
-      "description": "Version examples in the README",
-      "managerFilePatterns": ["/^README\\.md$/"],
+      "description": "Version examples in the README and docs",
+      "managerFilePatterns": ["/^README\\.md$/", "/^docs/.+\\.md$/"],
       "matchStrings": ["#\\s+golangci-lint-version: (?<currentValue>v\\d+\\.\\d+\\.\\d+)"],
       "depNameTemplate": "golangci/golangci-lint",
       "datasourceTemplate": "github-releases"
@@ -72,15 +72,6 @@
       "managerFilePatterns": ["/^Makefile\\.common$/"],
       "matchStrings": ["[A-Z_]+_IMAGE \\?= (?<depName>[^:\\s]+):(?<currentValue>[^\\s@]+)"],
       "datasourceTemplate": "docker"
-    },
-    {
-      "customType": "regex",
-      "description": "check-key-expiry.sh pinned to a gpg-signing-manager commit",
-      "managerFilePatterns": ["/^actions/gpg-check-key-expiration/action\\.ya?ml$/"],
-      "matchStrings": ["raw\\.githubusercontent\\.com/OpenCHAMI/gpg-signing-manager/(?<currentDigest>[a-f0-9]{40})/"],
-      "depNameTemplate": "https://github.com/OpenCHAMI/gpg-signing-manager",
-      "currentValueTemplate": "main",
-      "datasourceTemplate": "git-refs"
     }
   ]
 }

@@ -1,135 +1,181 @@
 # SPDX-FileCopyrightText: 2026 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
-#
-# ############################################################################
-# #  DEPRECATED ACTION -- DO NOT USE IN NEW CALLERS
-# #
-# #  gpg-verify-trust-chain is replaced by the rpm -K signature check in validate-packages.yml.
-# #  It is kept only so callers pinned to older refs keep working, and will be
-# #  removed in a future major release. See README.md for migration notes.
-# ############################################################################
 
-name: '[DEPRECATED] Verify gpg trust chain'
+name: 'Verify gpg trust chain'
+author: 'OpenCHAMI'
+branding: { icon: 'shield', color: 'purple' }
 description: >-
-  Verifies the release GPG trust chain (master certifies repo key, repo key certifies ephemeral key) and optionally checks RPM signatures. Standalone: installs its own dependencies and runs verify-chain.sh, fetched at runtime from a pinned commit in gpg-signing-manager.
+  Verifies the release trust chain (offline org master certifies the repo-cert
+  key, which certifies the per-run signing key) and each file's detached
+  signature by the signing key. Format-agnostic: verifies files such as
+  checksums.txt, not packages.
+
 inputs:
-  master-public-key:
-    description: >-
-      ASCII-armored master public key content (e.g. from a secret). If empty and master-public-key-file is also empty, the chain check is skipped with a warning (exit 0) unless require-master is 'true'.
+  public-key-master:
+    description: 'ASCII-armored org master public key (e.g. the MASTER_PUBLIC_ASC org secret); never the copy attached to a release'
+    required: true
+  fingerprint-master:
+    description: 'Full fingerprint of the org master key (e.g. the MASTER_FPR org secret); the master public key must match it'
+    required: true
+  public-key-file-repo:
+    description: 'Repo-cert public key, certified by the master'
+    required: false
+    default: 'pubkey-repo.asc'
+  public-key-file-signing:
+    description: 'Per-run signing public key, certified by the repo-cert key'
+    required: false
+    default: 'pubkey-signing.asc'
+  files:
+    description: 'Space- or newline-separated files to verify; each needs a detached signature at <file>.asc'
+    required: false
+    default: 'checksums.txt'
+  repo:
+    description: 'Expected owner/repo (e.g. OpenCHAMI/smd); when set, the master must have certified the repo-cert user ID "<owner>/<repo> RPM Signing Key"'
     required: false
     default: ''
-  master-public-key-file:
-    description: 'Path to the master public key file. Takes precedence over master-public-key.'
-    required: false
-    default: ''
-  repo-public-key-file:
-    description: 'Path to the repo public key, certified by the master key'
-    required: false
-    default: 'repo-public.asc'
-  ephemeral-public-key-file:
-    description: 'Path to the ephemeral public key, certified by the repo key'
-    required: false
-    default: 'ephemeral-public.asc'
-  rpm-dir:
-    description: >-
-      Directory searched recursively for *.rpm to signature-check. Empty dir or no matches is not an error; key-chain checks still run.
-    required: false
-    default: 'dist'
-  require-master:
-    description: "If 'true', fail instead of skipping when no master key is provided"
-    required: false
-    default: 'true'
+
 outputs:
-  verified:
-    description: "'true' if the chain was verified, 'skipped' if no master key was provided"
-    value: ${{ steps.verify.outputs.verified }}
+  fingerprint-master:
+    description: 'Fingerprint of the org master key'
+    value: ${{ steps.verify.outputs.fingerprint-master }}
+  fingerprint-repo:
+    description: 'Fingerprint of the repo-cert key'
+    value: ${{ steps.verify.outputs.fingerprint-repo }}
+  fingerprint-signing:
+    description: 'Fingerprint of the per-run signing key'
+    value: ${{ steps.verify.outputs.fingerprint-signing }}
+
 runs:
-  using: 'composite'
+  using: composite
   steps:
-    - name: Deprecation warning
+    - name: Install GnuPG
       shell: bash
       run: |
-        echo "::warning title=Deprecated action::gpg-verify-trust-chain is deprecated; migrate to the rpm -K signature check in validate-packages.yml."
-    - name: Install dependencies
-      shell: bash
-      run: |
-        need=()
-        command -v gpg >/dev/null 2>&1 || need+=(gnupg2)
-        command -v rpm >/dev/null 2>&1 || need+=(rpm)
-        [[ ${#need[@]} -eq 0 ]] && exit 0
-        SUDO=''
-        command -v sudo >/dev/null 2>&1 && SUDO=sudo
+        set -euo pipefail
+        command -v gpg >/dev/null 2>&1 && exit 0
+        SUDO=''; command -v sudo >/dev/null 2>&1 && SUDO=sudo
         if command -v apt-get >/dev/null 2>&1; then
           $SUDO apt-get update -qq
-          $SUDO apt-get install -y -qq "${need[@]/#rpm/rpm}"
+          $SUDO apt-get install -y -qq --no-install-recommends gnupg
         elif command -v dnf >/dev/null 2>&1; then
-          $SUDO dnf install -y -q "${need[@]}"
+          $SUDO dnf install -y -q gnupg2
         else
-          echo '::error::Unsupported package manager: need apt-get or dnf' >&2
+          echo '::error::Unsupported package manager: need apt-get or dnf'
           exit 1
         fi
-    - name: Verify trust chain
+
+    - name: Verify trust chain and signatures
       id: verify
       shell: bash
       env:
-        MASTER_KEY_CONTENT: ${{ inputs.master-public-key }}
-        MASTER_KEY_FILE: ${{ inputs.master-public-key-file }}
-        REPO_KEY_FILE: ${{ inputs.repo-public-key-file }}
-        EPHEMERAL_KEY_FILE: ${{ inputs.ephemeral-public-key-file }}
-        RPM_DIR: ${{ inputs.rpm-dir }}
-        REQUIRE_MASTER: ${{ inputs.require-master }}
-      run: |-
+        MASTER_PUBLIC_KEY: ${{ inputs.public-key-master }}
+        MASTER_FINGERPRINT: ${{ inputs.fingerprint-master }}
+        REPO_KEY_FILE: ${{ inputs.public-key-file-repo }}
+        SIGNING_KEY_FILE: ${{ inputs.public-key-file-signing }}
+        FILES: ${{ inputs.files }}
+        REPO: ${{ inputs.repo }}
+      run: |
         set -euo pipefail
+        GNUPGHOME=$(mktemp -d)
+        export GNUPGHOME
+        chmod 700 "$GNUPGHOME"
+        trap 'rm -rf "$GNUPGHOME"' EXIT
 
-        # --- Resolve the master public key -----------------------------------
-        workdir=$(mktemp -d)
-        trap 'rm -rf "$workdir"' EXIT
+        # Every check runs and reports; the step fails at the end.
+        failed=false
+        fail() { echo "::error::$*"; failed=true; }
 
-        master_key=''
-        if [[ -n "$MASTER_KEY_FILE" ]]; then
-          master_key="$MASTER_KEY_FILE"
-        elif [[ -n "$MASTER_KEY_CONTENT" ]]; then
-          master_key="$workdir/master-public.asc"
-          printf '%s\n' "$MASTER_KEY_CONTENT" > "$master_key"
+        # Fingerprint of the single primary key in an armored file; fails if
+        # the file holds zero or several keys (no smuggled extra keys).
+        key_fpr() {
+          gpg --batch --with-colons --import-options show-only --import "$1" 2>/dev/null \
+            | awk -F: '$1=="pub" {n++} n==1 && $1=="fpr" && !f {f=$10} END {if (n==1) print f; else exit 1}'
+        }
+
+        # 0 when SIGNER made a verified certification on SUBJECT, on a user ID
+        # named PREFIX (any user ID when PREFIX is empty).
+        certified_by() {
+          local signer_id="${1: -16}" subject="$2" prefix="$3"
+          gpg --batch --with-colons --check-sigs "$subject" 2>/dev/null \
+            | awk -F: -v id="${signer_id^^}" -v prefix="${prefix,,}" '
+                $1=="uid" { name=tolower($10); ok=(prefix=="" || name==prefix || index(name, prefix " ")==1) }
+                $1=="sig" && $2=="!" && ok && toupper($5)==id { found=1 }
+                END { exit !found }'
+        }
+
+        # On a failed certification check, print what the subject key does
+        # carry: its user IDs and who certified each (all public data).
+        show_certs() {
+          echo "Expected certifier key ID: ${1: -16}"
+          echo "User IDs and certifications on ${2} (! good, ? certifier not the expected key, - bad):"
+          gpg --batch --with-colons --check-sigs "$2" 2>/dev/null \
+            | awk -F: '$1=="uid" {print "  uid: " $10} $1=="sig" {print "    sig " $2 " by " $5}'
+        }
+
+        # 0 when the key is neither revoked nor expired.
+        usable() {
+          gpg --batch --with-colons --list-keys "$1" 2>/dev/null \
+            | awk -F: '$1=="pub" { exit ($2=="r" || $2=="e") }'
+        }
+
+        master_key="$GNUPGHOME/master.asc"
+        printf '%s\n' "$MASTER_PUBLIC_KEY" > "$master_key"
+        for f in "$REPO_KEY_FILE" "$SIGNING_KEY_FILE"; do
+          [[ -f "$f" ]] || { echo "::error::Key file not found: $f"; exit 1; }
+        done
+
+        master_fpr=$(key_fpr "$master_key") || { echo "::error::public-key-master must hold exactly one public key"; exit 1; }
+        repo_fpr=$(key_fpr "$REPO_KEY_FILE") || { echo "::error::${REPO_KEY_FILE} must hold exactly one public key"; exit 1; }
+        signing_fpr=$(key_fpr "$SIGNING_KEY_FILE") || { echo "::error::${SIGNING_KEY_FILE} must hold exactly one public key"; exit 1; }
+        echo "Master:  ${master_fpr}"
+        echo "Repo:    ${repo_fpr}"
+        echo "Signing: ${signing_fpr}"
+
+        expected=$(tr -d '[:space:]' <<< "$MASTER_FINGERPRINT")
+        [[ "${expected^^}" == "${master_fpr^^}" ]] || fail "Master public key ${master_fpr} doesn't match fingerprint-master."
+
+        for f in "$master_key" "$REPO_KEY_FILE" "$SIGNING_KEY_FILE"; do
+          gpg --batch --quiet --import "$f" 2>/dev/null
+        done
+
+        usable "$master_fpr" || fail "Master key ${master_fpr} is revoked or expired."
+        usable "$repo_fpr" || fail "Repo-cert key ${repo_fpr} is revoked or expired."
+        usable "$signing_fpr" || fail "Signing key ${signing_fpr} is revoked or expired."
+
+        identity=''
+        [[ -n "$REPO" ]] && identity="${REPO} RPM Signing Key"
+        if ! certified_by "$master_fpr" "$repo_fpr" "$identity"; then
+          fail "Master ${master_fpr} hasn't certified repo-cert key ${repo_fpr}${identity:+ as '${identity}'}."
+          show_certs "$master_fpr" "$repo_fpr"
+        fi
+        if ! certified_by "$repo_fpr" "$signing_fpr" ''; then
+          fail "Repo-cert key ${repo_fpr} hasn't certified signing key ${signing_fpr}."
+          show_certs "$repo_fpr" "$signing_fpr"
         fi
 
-        if [[ -z "$master_key" ]]; then
-          if [[ "$REQUIRE_MASTER" == 'true' ]]; then
-            echo '::error::No master public key provided and require-master is true'
-            exit 1
+        # shellcheck disable=SC2086 # intentional word splitting
+        set -- $FILES
+        [[ $# -gt 0 ]] || fail "No files to verify."
+        for f in "$@"; do
+          if [[ ! -f "$f" || ! -f "$f.asc" ]]; then
+            fail "Missing ${f} or its signature ${f}.asc."
+            continue
           fi
-          echo '::warning::No master public key provided; skipping trust chain verification'
-          echo 'verified=skipped' >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-
-        for f in "$master_key" "$REPO_KEY_FILE" "$EPHEMERAL_KEY_FILE"; do
-          if [[ ! -f "$f" ]]; then
-            echo "::error::Key file not found: $f"
-            exit 1
+          # GOODSIG excludes expired (EXPKEYSIG) and revoked (REVKEYSIG) keys;
+          # VALIDSIG's last field is the signer's primary key fingerprint.
+          status=$(gpg --batch --status-fd 1 --verify "$f.asc" "$f" 2>/dev/null || true)
+          signer=$(awk '$2=="VALIDSIG" {print $NF}' <<< "$status")
+          if grep -q '^\[GNUPG:\] GOODSIG ' <<< "$status" && [[ "${signer^^}" == "${signing_fpr^^}" ]]; then
+            echo "Verified ${f}"
+          else
+            fail "Signature ${f}.asc doesn't verify against signing key ${signing_fpr}."
           fi
         done
 
-        # --- Collect RPMs (optional) -----------------------------------------
-        rpm_args=()
-        if [[ -n "$RPM_DIR" && -d "$RPM_DIR" ]]; then
-          while IFS= read -r -d '' r; do
-            rpm_args+=(--rpm "$r")
-          done < <(find "$RPM_DIR" -name '*.rpm' -print0)
-        fi
-        if [[ ${#rpm_args[@]} -eq 0 ]]; then
-          echo "No RPMs found under '${RPM_DIR:-<none>}'; verifying key chain only."
-        fi
-
-        # --- Run the verifier ---------------------------------------
-        script="$workdir/verify-chain.sh"
-        curl -fsSL --retry 3 -o "$script" \
-         "https://raw.githubusercontent.com/OpenCHAMI/gpg-signing-manager/d4366a45c94be50cbb7f90d229c10f395b6d10d8/scripts/verify-chain.sh"
-
-        bash "$script" \
-          --master    "$master_key" \
-          --repo      "$REPO_KEY_FILE" \
-          --ephemeral "$EPHEMERAL_KEY_FILE" \
-          "${rpm_args[@]+"${rpm_args[@]}"}"
-
-        echo 'verified=true' >> "$GITHUB_OUTPUT"
+        [[ "$failed" == false ]] || exit 1
+        {
+          echo "fingerprint-master=${master_fpr}"
+          echo "fingerprint-repo=${repo_fpr}"
+          echo "fingerprint-signing=${signing_fpr}"
+        } >> "$GITHUB_OUTPUT"
+        echo "Trust chain and signatures verified."

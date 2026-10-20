@@ -19,10 +19,9 @@
 # Multi-arch container images        dockers_v2
 # :pr-<N> images on PRs              dockers_v2.tags (uses {{ .Tag }})
 # rpm / deb packages (incl. quadlet) nfpms
-# Package signing                    nfpms[].rpm.signature (GPG_KEY_PATH)
 # GitHub release + notes             release
 # Build provenance attestations      (workflow: automatic for binaries and images)
-# GPG public key on the release      (workflow: derived from `gpg-key`)
+# Signed checksums.txt + key chain   (workflow: gpg-sign-artifacts; needs checksum)
 # Publishing to a yum/apt repository (out of scope; see below)
 #
 # Out of scope: GoReleaser only attaches packages to the GitHub release.
@@ -30,14 +29,12 @@
 # handled by a separate post-release workflow, which is easier to manage than
 # GoReleaser's `blob:` / `publishers:` (or Pro-only hosted integrations):
 # repository metadata spans all packages and releases, and publishing runs
-# only after validation and publish-release.
+# only after validation and release-publish.
 #
 # Environment provided by the workflows (always set, so templates can rely on
 # them; set them yourself when running goreleaser locally):
 #
 #   IS_PR_BUILD    "true" on PR builds and build checks, "false" on releases
-#   GPG_KEY_PATH   path to the private key from the `gpg-key` secret on release
-#                  builds; empty otherwise (packages are then unsigned)
 #   GIT_STATE      "clean" or "dirty"
 #   BUILD_HOST     runner hostname
 #   GO_VERSION     `go version` output, e.g. go1.26.7
@@ -121,11 +118,12 @@ archives:
       - LICENSES/*
       - README.md
 
-# Checksums for every release file.
+# Checksums for every release file. gpg-sign-artifacts signs this file, and
+# release verification expects exactly this name.
 #
 # Docs: https://goreleaser.com/customization/package/checksum/
 checksum:
-  name_template: "{{ .ProjectName }}_checksums.txt"
+  name_template: checksums.txt
 
 # -------------------------------------------------------------------------
 # Container images
@@ -279,14 +277,6 @@ nfpms:
           - systemd
         suggests:
           - smd-quadlet (>= 2.20.0)
-    rpm:
-      # Signed only when GPG_KEY_PATH is set (release builds with the
-      # `gpg-key` secret); the passphrase comes from NFPM_PASSPHRASE, which
-      # the workflow fills from `gpg-key-passphrase`. The matching public key
-      # is attached to the release and checked by validate-packages.
-      # Docs: https://goreleaser.com/customization/package/nfpm/#signing-key-passphrases
-      signature:
-        key_file: "{{ .Env.GPG_KEY_PATH }}"
 
 # -------------------------------------------------------------------------
 # GitHub release
@@ -294,7 +284,7 @@ nfpms:
 
 # The workflows control draft state and notes: build-release-goreleaser passes
 # `--draft` (input `release-draft`, default true; publish later with
-# publish-release) and GitHub's generated notes via `--release-notes`
+# release-publish) and GitHub's generated notes via `--release-notes`
 # (input `generate-release-notes`), which replace the changelog below.
 # `header` / `footer` are added around those notes.
 #
@@ -305,13 +295,6 @@ release:
   name_template: "v{{ .Version }}"
   # Marks vX.Y.Z-rc1 and similar tags as prereleases.
   prerelease: auto
-  footer: |
-    ## Verifying packages
-
-    ```bash
-    rpm --import gpg-public-key.asc
-    rpm -K foo-quadlet-*.rpm
-    ```
 
 # Used only when no `--release-notes` file is passed. `use: git` needs no API
 # token; `github-native` matches GitHub's own notes but calls the API.
