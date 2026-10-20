@@ -79,6 +79,10 @@ jobs:
           path: fabrica
           fetch-depth: 0   # full history + tags so `git describe` stamps the same version as a local build
           persist-credentials: false
+      # The checkout lands inside the caller's work tree; generate-check
+      # requires a clean tree, so keep it out of git status.
+      - name: Hide Fabrica checkout from git status
+        run: echo '/fabrica/' >> .git/info/exclude
       - name: Build Fabrica
         working-directory: fabrica
         run: make build
