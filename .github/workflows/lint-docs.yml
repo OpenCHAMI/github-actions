@@ -54,8 +54,9 @@ jobs:
           check=true
           report_issue=false
           if [[ "$EVENT" == pull_request || "$EVENT" == pull_request_target ]]; then
-            if ! gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename' \
-                | grep -qiE '\.(md|markdown|html?|rst)$'; then
+            # Not piped into grep -q: its early exit fails gh with SIGPIPE.
+            files=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
+            if ! grep -qiE '\.(md|markdown|html?|rst)$' <<< "$files"; then
               echo "The PR changes no docs; nothing to check."
               check=false
             fi
