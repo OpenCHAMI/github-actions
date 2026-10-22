@@ -355,6 +355,9 @@ on:
 jobs:
   govulncheck:
     uses: OpenCHAMI/github-actions/.github/workflows/govulncheck.yml@v4.0
+    permissions:
+      contents: read
+      security-events: write  # SARIF upload to GHAS
     # Optional overrides:
     # with:
     #   go-version: 1.26.7  # default: read from go.mod
