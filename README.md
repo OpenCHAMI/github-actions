@@ -18,7 +18,7 @@ Reusable GitHub Actions for CI/CD.
 - [`.github/workflows/lint-go.yml`](docs/workflows.md#lint-go): Reusable workflow that runs golangci-lint and checks go.mod/go.sum are tidy
 - [`.github/workflows/test-unit-go.yml`](docs/workflows.md#test-unit-go): Reusable workflow that runs Go unit tests, optionally reporting coverage to Coveralls
 - [`.github/workflows/reuse.yml`](docs/workflows.md#reuse): Reusable workflow that checks REUSE copyright/licensing compliance
-- [`.github/workflows/govulncheck.yml`](docs/workflows.md#govulncheck): Reusable workflow that scans Go modules for known CVEs
+- [`.github/workflows/govulncheck.yml`](docs/workflows.md#govulncheck): Reusable workflow that scans Go modules for known CVEs (govulncheck), reporting on PRs and in an issue
 - [`.github/workflows/dependency-review.yml`](docs/workflows.md#dependency-review): Reusable workflow that gates PRs introducing CVE-flagged deps
 - [`.github/workflows/trivy-image-scan.yml`](docs/workflows.md#trivy-image-scan): Reusable workflow that scans built container images for CVEs
 - [`.github/workflows/scorecard.yml`](docs/workflows.md#scorecard): Reusable workflow that runs the OpenSSF Scorecard supply-chain analysis
