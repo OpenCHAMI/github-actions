@@ -98,6 +98,16 @@ jobs:
             echo "::error::lychee failed (exit ${LYCHEE_EXIT})."
             exit 1
           fi
+          # Fail if the report properties read below move, rather than report no
+          # broken links (and close the issue).
+          if ! jq -e '(.error_map | type == "object") and (.timeout_map | type == "object")
+              and all(.error_map[][], .timeout_map[][]; (.url | type == "string")
+                and (.status.text | type == "string")
+                and (.span == null or (.span.line | type == "number")))' \
+              "${RUNNER_TEMP}/lychee.json" > /dev/null; then
+            echo "::error::Unexpected lychee report structure; update this workflow."
+            exit 1
+          fi
           # One finding per broken link, with local file URLs made repo-relative.
           jq --arg root "file://${GITHUB_WORKSPACE}/" '
             [ (.error_map // {} | to_entries[] | .value[] + {file: .key, kind: "error"}),

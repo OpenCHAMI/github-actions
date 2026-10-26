@@ -5,7 +5,15 @@ name: govulncheck
 
 # Reusable workflow that runs the Go team's vulnerability scanner against
 # the caller's module. Detects known CVEs in the import graph (including
-# transitive deps) and reports them as workflow annotations.
+# transitive deps) and fails when the code calls a vulnerable function.
+#
+# - Every run: findings go to code scanning as SARIF (category govulncheck),
+#   with called vulnerabilities placed at their call site, so GitHub
+#   annotates PRs that add or change such a call. Fork PRs can't upload, so
+#   they only get the job summary.
+# - Default branch (push, schedule, or dispatch): one open issue listing the
+#   called vulnerabilities, created or updated each run, and closed once none
+#   are left.
 #
 # Pair with the actionlint/zizmor lint workflow for a "static security
 # baseline" wave; pair with dependency-review for PR-time gating.
@@ -28,6 +36,11 @@ on:
         required: false
         type: string
         default: 'ubuntu-slim'
+      issue-title:
+        description: 'Title of the issue that tracks called vulnerabilities on the default branch'
+        required: false
+        type: string
+        default: 'govulncheck found called vulnerabilities'
 
 permissions:
   contents: read   # baseline for checkout
@@ -35,7 +48,27 @@ permissions:
 jobs:
   govulncheck:
     runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read          # baseline for checkout
+      security-events: write  # SARIF upload to GHAS
+    outputs:
+      report-issue: ${{ steps.mode.outputs.report-issue }}
+      called: ${{ steps.report.outputs.called }}
     steps:
+      - name: Decide what to report
+        id: mode
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          report_issue=false
+          if [[ "$EVENT" != pull_request && "$EVENT" != pull_request_target \
+                && "$GITHUB_REF_NAME" == "$(gh api "repos/${GITHUB_REPOSITORY}" --jq .default_branch)" ]]; then
+            report_issue=true
+          fi
+          echo "report-issue=${report_issue}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -44,3 +77,134 @@ jobs:
           go-version-file: ${{ inputs.go-version == '' && 'go.mod' || '' }}
           go-version-input: ${{ inputs.go-version }}
           go-package: ${{ inputs.go-package }}
+          output-format: sarif
+          output-file: govulncheck.sarif
+
+      # govulncheck puts every finding at go.mod:1, which a PR rarely changes, so
+      # code scanning never annotates the PR. Move each called finding to its
+      # call site: the last frame of each trace in the caller's own code.
+      - name: Point findings at their call sites
+        run: |
+          set -euo pipefail
+          # Fail if the SARIF properties read below move, rather than report nothing.
+          if ! jq -e 'all(.runs[]; [(.tool.driver.rules // [])[].id] as $ids
+              | all((.tool.driver.rules // [])[]; .fullDescription.text | type == "string")
+              and all(.results[]?; IN(.ruleId; $ids[]) and (.level | type == "string")
+                and (.message.text | type == "string")
+                and (.locations[0] | (.message.text | type == "string")
+                  and (.physicalLocation.artifactLocation.uri | type == "string")
+                  and (.physicalLocation.region.startLine | type == "number"))
+                and (.level != "error" or (.codeFlows | type == "array"))
+                and all(.codeFlows[]?.threadFlows[].locations[].location.physicalLocation;
+                  (.artifactLocation.uriBaseId | type == "string")
+                  and (.region.startLine | type == "number"))))' govulncheck.sarif > /dev/null; then
+            echo "::error::Unexpected govulncheck SARIF structure; update this workflow."
+            exit 1
+          fi
+          jq '.runs[].results |= [(. // [])[] | . as $r
+            | [(.codeFlows // [])[]
+               | [.threadFlows[].locations[].location
+                  | select(.physicalLocation.artifactLocation.uriBaseId == "%SRCROOT%")]
+               | last | select(. != null)]
+            | unique_by(.physicalLocation)
+            | if length == 0 then $r
+              else .[] | $r + {locations: [{physicalLocation, message: $r.locations[0].message}]}
+              end]' govulncheck.sarif > govulncheck.sarif.tmp
+          mv govulncheck.sarif.tmp govulncheck.sarif
+
+      # Called vulnerabilities are SARIF level "error"; imported or required but
+      # uncalled ones ("warning", "note") stay in code scanning only.
+      - name: Build report
+        id: report
+        env:
+          BLOB_URL: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          jq -r --arg blob "$BLOB_URL" --arg run "$RUN_URL" '
+            [.runs[] | (.tool.driver.rules // [] | INDEX(.id)) as $rules
+             | (.results // [])[] | select(.level == "error")
+             | {id: .ruleId, rule: $rules[.ruleId], message: .message.text,
+                path: .locations[0].physicalLocation.artifactLocation.uri,
+                line: .locations[0].physicalLocation.region.startLine}]
+            | if length == 0 then "No called vulnerabilities found." else
+                "Found \(map(.id) | unique | length) called vulnerabilities ([run](\($run))).",
+                (group_by(.id)[] | "", "### [\(.[0].id)](https://pkg.go.dev/vuln/\(.[0].id))", "",
+                  (.[0].rule.fullDescription.text // .[0].message), "",
+                  (.[] | "- [`\(.path):\(.line)`](\($blob)/\(.path)#L\(.line))"))
+              end
+          ' govulncheck.sarif > report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          echo "called=$(jq '[.runs[].results[]? | select(.level == "error")] | length > 0' govulncheck.sarif)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload SARIF to GHAS
+        # Fork PRs get a read-only token, so the upload would fail.
+        if: >-
+          github.event.pull_request.head.repo.full_name == github.repository
+          || github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: govulncheck.sarif
+          category: govulncheck
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ steps.mode.outputs.report-issue == 'true' }}
+        with:
+          name: govulncheck-report
+          path: report.md
+          retention-days: 1
+
+      # SARIF mode exits 0 on findings; fail on called vulnerabilities like the
+      # default text mode does. On the default branch, report-issue fails
+      # instead, after updating the issue.
+      - name: Fail on called vulnerabilities
+        if: ${{ steps.mode.outputs.report-issue != 'true' && steps.report.outputs.called == 'true' }}
+        run: |
+          echo "::error::govulncheck found called vulnerabilities; see the job summary."
+          exit 1
+
+  report-issue:
+    needs: govulncheck
+    if: ${{ needs.govulncheck.outputs.report-issue == 'true' }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    permissions:
+      issues: write   # create, update, or close the vulnerabilities issue
+    # Runs one at a time, so two runs can't both create the issue.
+    concurrency:
+      group: govulncheck-issue-${{ github.repository }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TITLE: ${{ inputs.issue-title }}
+      CALLED: ${{ needs.govulncheck.outputs.called }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: govulncheck-report
+          path: ${{ runner.temp }}/govulncheck
+
+      - name: Create, update, or close the issue
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          report="${RUNNER_TEMP}/govulncheck/report.md"
+          issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title |
+            jq -r '[.[] | select(.title == env.TITLE)][0].number // empty')
+          if [[ "$CALLED" == true ]]; then
+            if [[ -n "$issue" ]]; then
+              gh issue edit "$issue" --repo "$GITHUB_REPOSITORY" --body-file "$report"
+              echo "Updated issue #${issue}."
+            else
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file "$report"
+            fi
+            echo "::error::govulncheck found called vulnerabilities; see the issue."
+            exit 1
+          elif [[ -n "$issue" ]]; then
+            gh issue close "$issue" --repo "$GITHUB_REPOSITORY" \
+              --comment "No called vulnerabilities as of ${GITHUB_SHA} ([run](${RUN_URL}))."
+            echo "Closed issue #${issue}."
+          else
+            echo "No called vulnerabilities and no open issue."
+          fi
