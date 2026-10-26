@@ -37,3 +37,7 @@ admits signed releases.
 ```
 
 Outputs `fingerprint-master`, `fingerprint-repo`, and `fingerprint-signing`.
+
+The checks live in [`scripts/gpg-verify-trust-chain.sh`](../../scripts/gpg-verify-trust-chain.sh),
+so they can also run outside this action (e.g. fetched by commit SHA). It takes
+the inputs as environment variables and needs `gpg`; see its header.
