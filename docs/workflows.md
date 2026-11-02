@@ -326,7 +326,7 @@ jobs:
 ### govulncheck
 Runs the Go team's vulnerability scanner against the caller's module. Detects known CVEs in the import graph (direct and transitive) and fails when the code calls a vulnerable function. Reads the Go version from the caller's `go.mod` by default.
 
-Findings go to code scanning (category `govulncheck`), with called vulnerabilities placed at their call site, so PRs that add or change such a call get an inline annotation. On the default branch, one issue lists the called vulnerabilities; each run creates or updates it, and closes it once none are left.
+Findings go to code scanning (category `govulncheck`), with called vulnerabilities placed at their call site, so PRs that add or change such a call get an inline annotation.
 
 **Usage:**
 ```yaml
@@ -344,13 +344,11 @@ jobs:
     permissions:
       contents: read          # baseline for checkout
       security-events: write  # SARIF upload to GHAS
-      issues: write           # vulnerabilities issue on the default branch
     # Optional overrides:
     # with:
     #   go-version: 1.26.7  # default: read from go.mod
     #   go-package: ./cmd/...
     #   runner: ubuntu-latest
-    #   issue-title: govulncheck found called vulnerabilities
 ```
 
 ### dependency-review
