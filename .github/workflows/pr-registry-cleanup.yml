@@ -33,11 +33,12 @@ jobs:
       packages: ${{ steps.packages.outputs.packages }}
     steps:
       - name: Check trigger
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
         env:
           EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
         run: |
-          echo "::error::pr-registry-cleanup runs on pull_request (closed); got ${EVENT}"
+          echo "::error::pr-registry-cleanup runs on pull_request (closed); got ${EVENT} (${ACTION})"
           exit 1
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
