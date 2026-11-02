@@ -111,8 +111,10 @@ if ! certified_by "$repo_fpr" "$signing_fpr" ''; then
   show_certs "$repo_fpr" "$signing_fpr"
 fi
 
-# shellcheck disable=SC2086 # intentional word splitting
+# shellcheck disable=SC2086 # intentional word splitting; globbing off
+set -f
 set -- $FILES
+set +f
 [[ $# -gt 0 ]] || fail "No files to verify."
 for f in "$@"; do
   if [[ ! -f "$f" || ! -f "$f.asc" ]]; then
