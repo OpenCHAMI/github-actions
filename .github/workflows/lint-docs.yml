@@ -168,6 +168,7 @@ jobs:
     runs-on: ubuntu-slim
     timeout-minutes: 5
     permissions:
+      contents: read  # read the default branch head
       issues: write   # create, update, or close the broken-links issue
     # Runs one at a time, so two runs can't both create the issue.
     concurrency:
@@ -188,6 +189,13 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
+          # Only the run for the branch's latest commit writes; an older run that
+          # finishes last would otherwise overwrite newer findings.
+          head=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_REF_NAME}" --jq .sha)
+          if [[ "$head" != "$GITHUB_SHA" ]]; then
+            echo "::notice::${GITHUB_SHA} is no longer the head of ${GITHUB_REF_NAME} (${head}); leaving the issue to the newer run."
+            exit 0
+          fi
           report="${RUNNER_TEMP}/lint-docs/report.md"
           issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number,title |
             jq -r '[.[] | select(.title == env.TITLE)][0].number // empty')
