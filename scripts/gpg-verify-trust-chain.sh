@@ -50,15 +50,34 @@ key_fpr() {
     | awk -F: '$1=="pub" {n++} n==1 && $1=="fpr" && !f {f=$10} END {if (n==1) print f; else exit 1}'
 }
 
-# 0 when SIGNER made a verified certification on SUBJECT, on a user ID
-# named PREFIX (any user ID when PREFIX is empty).
+# 0 when SIGNER certified SUBJECT on a user ID named PREFIX (any user ID when
+# PREFIX is empty), and that certification is valid, unexpired, and unrevoked.
+# Each user ID is judged on its own rows from --check-sigs.
 certified_by() {
   local signer_id="${1: -16}" subject="$2" prefix="$3"
   gpg --batch --with-colons --check-sigs "$subject" 2>/dev/null \
-    | awk -F: -v id="${signer_id^^}" -v prefix="${prefix,,}" '
-        $1=="uid" { name=tolower($10); ok=(prefix=="" || name==prefix || index(name, prefix " ")==1) }
-        $1=="sig" && $2=="!" && ok && toupper($5)==id { found=1 }
-        END { exit !found }'
+    | awk -F: -v id="${signer_id^^}" -v prefix="${prefix,,}" -v now="$(date +%s)" '
+        # Close the previous user ID: certified when its newest live
+        # certification is newer than its newest revocation.
+        function end_uid() { if (ok && cert > rev) found=1; ok=0; cert=rev=0 }
+        $1=="pub" || $1=="sub" { end_uid(); next }
+        # A new user ID: it must carry the expected name and be usable itself.
+        $1=="uid" {
+          end_uid(); name=tolower($10)
+          ok=(prefix=="" || name==prefix || index(name, prefix " ")==1) && $2!="r" && $2!="e"
+          next
+        }
+        !ok || toupper($5)!=id { next }
+        # 1. Valid: GPG verified the signature.
+        $2!="!" { next }
+        # 2. Not expired: certifications past their expiry date do not count.
+        $1=="sig" && $11 ~ /^1[0-3]/ {
+          if ($7!="" && $7+0 <= now) next
+          if ($6+0 > cert) cert=$6+0
+        }
+        # 3. Not revoked: remember the newest revocation; end_uid compares.
+        $1=="rev" && $11 ~ /^30/ { if ($6+0 > rev) rev=$6+0 }
+        END { end_uid(); exit !found }'
 }
 
 # On a failed certification check, print what the subject key does
