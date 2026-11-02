@@ -46,7 +46,7 @@ jobs:
 
       - name: Discover images
         id: discover
-        uses: OpenCHAMI/github-actions/actions/discover-ghcr-images@26748ab38b9b17fa895919ef937aca32376a23e2
+        uses: OpenCHAMI/github-actions/actions/discover-ghcr-images@1bcb6a89c847927a24c6abcde3b88df4d61f79a0 # v4.0
         with:
           images: ${{ inputs.images }}
 
