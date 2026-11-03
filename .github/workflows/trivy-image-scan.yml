@@ -50,7 +50,7 @@ jobs:
       images: ${{ steps.images.outputs.images }}
     steps:
       - name: Check trigger
-        if: ${{ github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ github.event_name != 'pull_request' && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) }}
         env:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
