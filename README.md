@@ -332,10 +332,18 @@ jobs:
 ```
 
 ### trivy-image-scan (Reusable Workflow)
-Scans already-pushed container images with Trivy and uploads SARIF findings to GitHub Advanced Security. It scans each image at the build's tag (`pr-<N>` on pull requests, else the pushed `v*` tag; any other trigger fails), one job per image, by digest. Fork PRs publish no images and are skipped. GitHub doesn't let `GITHUB_TOKEN` list packages, so image names come from `images`, else the `ghcr.io` entries in the GoReleaser config (`dockers_v2[].images`), else the repository name (see `discover-ghcr-images`). Every name must be an existing package; all bad names are reported, then the run fails. Run it after `build-release-goreleaser`.
+Scans already-pushed container images with Trivy and uploads SARIF findings to GitHub Advanced Security. It scans each image at the build's tag (`pr-<N>` on pull requests, else the pushed `v*` tag), one job per image, by digest. Fork PRs publish no images and are skipped. GitHub doesn't let `GITHUB_TOKEN` list packages, so image names come from `images`, else the `ghcr.io` entries in the GoReleaser config (`dockers_v2[].images`), else the repository name (see `discover-ghcr-images`). Every name must be an existing package; all bad names are reported, then the run fails.
+
+> [!IMPORTANT]
+> **Supported triggers:** Call this workflow from `pull_request` events or `push` events for tags beginning with `v`. Other events, including `workflow_dispatch`, `workflow_run`, and `release`, fail with an error. Run the scan after the image-publishing job.
 
 **Usage:**
 ```yaml
+on:
+  pull_request:
+  push:
+    tags: ['v*']
+
 jobs:
   build:
     uses: OpenCHAMI/github-actions/.github/workflows/build-release-goreleaser.yml@v4.0
