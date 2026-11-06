@@ -340,7 +340,9 @@ jobs:
 ```
 
 ### govulncheck
-Runs the Go team's vulnerability scanner against the caller's module. Detects known CVEs in the import graph (direct and transitive). Reads the Go version from the caller's `go.mod` by default.
+Runs the Go team's vulnerability scanner against the caller's module. Detects known CVEs in the import graph (direct and transitive) and fails when the code calls a vulnerable function. Reads the Go version from the caller's `go.mod` by default.
+
+Findings go to code scanning (category `govulncheck`), with called vulnerabilities placed at their call site, so PRs that add or change such a call get an inline annotation.
 
 **Usage:**
 ```yaml
@@ -355,6 +357,9 @@ on:
 jobs:
   govulncheck:
     uses: OpenCHAMI/github-actions/.github/workflows/govulncheck.yml@v4.0
+    permissions:
+      contents: read          # baseline for checkout
+      security-events: write  # SARIF upload to GHAS
     # Optional overrides:
     # with:
     #   go-version: 1.26.7  # default: read from go.mod
