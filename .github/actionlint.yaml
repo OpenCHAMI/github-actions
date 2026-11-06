@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-License-Identifier: MIT
+
+# actionlint doesn't recognize GitHub's self-repository `uses: $/...` syntax
+# yet. Remove this once it does.
+paths:
+  .github/workflows/0-local-ci.yml:
+    ignore:
+      - 'reusable workflow call "\$/'

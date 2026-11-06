@@ -1,8 +1,15 @@
 # SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
+#
+# ############################################################################
+# #  DEPRECATED WORKFLOW -- DO NOT USE IN NEW CALLERS
+# #
+# #  docker-build-release is replaced by build-release-goreleaser.yml (GoReleaser builds the images; build-only: build-check-goreleaser.yml).
+# #  It is kept only so callers pinned to older refs keep working, and will be
+# #  removed in a future major release. See README.md for migration notes.
+# ############################################################################
 
-name: Build image
-run-name: Dockeer image build for  ${{ github.event.push.ref }}
+name: docker-build-release
 
 on:
   workflow_call:
@@ -64,6 +71,9 @@ jobs:
       id-token: write      # Sigstore signing (built-in provenance)
       attestations: write  # built-in provenance & SBOM
     steps:
+      - name: Deprecation warning
+        run: |
+          echo "::warning title=Deprecated workflow::docker-build-release.yml is deprecated; migrate to build-release-goreleaser.yml (GoReleaser builds the images; build-only: build-check-goreleaser.yml)."
       - name: checkout repository
         uses: actions/checkout@v6.0.3
         with:
@@ -128,7 +138,7 @@ jobs:
           registry: ghcr.io
 
       - name: Build and push image
-        id: docker_build
+        id: docker-build
         uses: docker/build-push-action@v7.2.0
         with:
           push: true
@@ -153,14 +163,17 @@ jobs:
             ${{ env.CC != '' && format('"CC={0}"', env.CC) || '' }}
 
   publish-release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     needs: build-push-images
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     permissions:
       contents: write  # create GitHub release
     steps:
+      - name: Deprecation warning
+        run: |
+          echo "::warning title=Deprecated workflow::docker-build-release.yml is deprecated; migrate to build-release-goreleaser.yml (GoReleaser builds the images; build-only: build-check-goreleaser.yml)."
       - name: Parse semver string
-        id: semver_parser
+        id: semver-parser
         uses: booxmedialtd/ws-action-parse-semver@v1.4.7
         with:
           input_string: ${{ github.event.ref }}
@@ -170,5 +183,5 @@ jobs:
           # by default this will use the tag push tag as the tag and name
           # if we want to trigger tagging from the workflow, "tag" and "commit"
           # need to be set to create a new one
-          prerelease: ${{ steps.semver_parser.outputs.prerelease != '' }}
+          prerelease: ${{ steps.semver-parser.outputs.prerelease != '' }}
           skipIfReleaseExists: true

@@ -1,7 +1,15 @@
 # SPDX-FileCopyrightText: 2026 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
+#
+# ############################################################################
+# #  DEPRECATED ACTION -- DO NOT USE IN NEW CALLERS
+# #
+# #  gpg-verify-trust-chain is replaced by the rpm -K signature check in validate-packages.yml.
+# #  It is kept only so callers pinned to older refs keep working, and will be
+# #  removed in a future major release. See README.md for migration notes.
+# ############################################################################
 
-name: 'Verify gpg trust chain'
+name: '[DEPRECATED] Verify gpg trust chain'
 description: >-
   Verifies the release GPG trust chain (master certifies repo key, repo key certifies ephemeral key) and optionally checks RPM signatures. Standalone: installs its own dependencies and runs verify-chain.sh, fetched at runtime from a pinned commit in gpg-signing-manager.
 inputs:
@@ -38,6 +46,10 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Deprecation warning
+      shell: bash
+      run: |
+        echo "::warning title=Deprecated action::gpg-verify-trust-chain is deprecated; migrate to the rpm -K signature check in validate-packages.yml."
     - name: Install dependencies
       shell: bash
       run: |

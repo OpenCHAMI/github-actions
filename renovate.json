@@ -3,5 +3,30 @@
   "extends": [
     "github>OpenCHAMI/.github//renovate-config/default",
     "config:recommended"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Default renovate-config-validator version in lint-renovate and its README example",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/lint-renovate\\.yml$/",
+        "/^README\\.md$/"
+      ],
+      "matchStrings": [
+        "renovate-version:\\s*\\n(?:\\s+[a-z]+:.*\\n)*?\\s+default: '(?<currentValue>\\d+\\.\\d+\\.\\d+)'",
+        "#\\s+renovate-version: (?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "renovate",
+      "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "Digest-pinned container image defaults in reusable workflow inputs",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "default: '(?<depName>docker\\.io/[^:']+):(?<currentValue>[^@']+)@(?<currentDigest>sha256:[a-f0-9]{64})'"
+      ],
+      "datasourceTemplate": "docker"
+    }
   ]
 }

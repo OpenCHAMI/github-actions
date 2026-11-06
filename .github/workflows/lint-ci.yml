@@ -1,7 +1,7 @@
-# SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-FileCopyrightText: © 2025 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
 
-name: lint-workflows
+name: lint-ci
 
 # Reusable workflow that lints GitHub Actions workflow files in the caller repo.
 # Runs actionlint (syntax / shellcheck / action-version sanity) and zizmor
@@ -15,24 +15,22 @@ permissions:
 
 jobs:
   actionlint:
-    name: actionlint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2.1.2
+      - uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
         with:
           flags: -color
 
   zizmor:
-    name: zizmor
     runs-on: ubuntu-latest
     permissions:
       contents: read          # baseline for checkout
       security-events: write  # for SARIF upload to GHAS
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: zizmorcore/zizmor-action@5f14fd08f7cf1cb1609c1e344975f152c7ee938d # v0.5.6
+      - uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4

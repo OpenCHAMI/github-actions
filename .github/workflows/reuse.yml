@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-FileCopyrightText: © 2025 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
 
 name: reuse
@@ -10,7 +10,7 @@ name: reuse
 on:
   workflow_call:
     inputs:
-      reuse_version:
+      reuse-version:
         type: string
         required: false
         default: '6.2.0'
@@ -21,14 +21,13 @@ permissions:
 
 jobs:
   reuse:
-    name: reuse
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: REUSE compliance check
         env:
-          REUSE_VERSION: ${{ inputs.reuse_version }}
+          REUSE_VERSION: ${{ inputs.reuse-version }}
         run: pipx run --backend pip --spec "reuse==$REUSE_VERSION" reuse lint --lines
