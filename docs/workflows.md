@@ -242,6 +242,37 @@ jobs:
     #   config-file: renovate.json
 ```
 
+### lint-docs
+Checks the caller's docs for broken links with [lychee](https://github.com/lycheeverse/lychee). It reports broken links rather than failing:
+
+- **Pull requests** that change docs (`.md`, `.html`, `.rst`): findings go to code scanning (category `lint-docs`), so the PR is annotated like `lint-ci`'s zizmor findings, and each alert closes once a later commit fixes the link. Broken links fail the code scanning check, timeouts only warn. PRs that change no docs skip the check. Fork PRs can't upload, so they only get the job summary. Private repos need GitHub Code Security for the upload; public repos need no setup.
+- **Default branch** (push, schedule, or dispatch): keeps one open issue (`issue-title`) with the report, created or updated on each run and closed once the links are fixed. Timeouts alone don't open it.
+
+Checks every `.md`, `.html`, and `.rst` file (lychee-action's defaults). Configure lychee with a [`lychee.toml`](https://lychee.cli.rs/guides/config/) at the repository root, e.g. `exclude_path` to skip files; see [Excluding links](https://lychee.cli.rs/recipes/excluding-links/) for `.lycheeignore`. The job fails only when lychee itself errors. A schedule catches external links that break between pushes.
+
+**Usage:**
+```yaml
+name: Lint Docs
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'   # catch external links that rot
+
+jobs:
+  lint-docs:
+    uses: OpenCHAMI/github-actions/.github/workflows/lint-docs.yml@v4.0
+    permissions:
+      contents: read          # baseline for checkout
+      pull-requests: read     # list the PR's changed files
+      security-events: write  # SARIF upload to GHAS
+      issues: write           # broken-links issue on the default branch
+    # Optional overrides:
+    # with:
+    #   issue-title: Docs link check found broken links
+```
+
 ### lint-makefile-common
 Fails when the repo's vendored `Makefile.common` differs from the copy in the latest release of this repository (read at the release's commit SHA), and prints the diff. Takes no inputs. Make it a required check only if drift should block merging.
 
