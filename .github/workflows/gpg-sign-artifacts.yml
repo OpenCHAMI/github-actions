@@ -1,128 +1,270 @@
-# Copyright © 2026 OpenCHAMI a Series of LF Projects, LLC
+# SPDX-FileCopyrightText: © 2026 OpenCHAMI a Series of LF Projects, LLC
 # SPDX-License-Identifier: MIT
-#
-# ############################################################################
-# #  DEPRECATED WORKFLOW -- DO NOT USE IN NEW CALLERS
-# #
-# #  gpg-sign-artifacts is replaced by nfpm package signing in build-release-goreleaser.yml (gpg-key secret).
-# #  It is kept only so callers pinned to older refs keep working, and will be
-# #  removed in a future major release. See README.md for migration notes.
-# ############################################################################
-#
-# Reusable workflow: intended as the common entry point for signing all
-# release artifact types (RPMs today; other formats later) with a per-run
-# ephemeral key certified through the repo's release key chain.
-#
-# Keep this file up to date and maintained as we add other package signing
-# tasks (e.g. .deb, Arch packages).
 
 name: gpg-sign-artifacts
+
+# Reusable workflow: signs release files through OpenCHAMI's release key chain
+# (offline org master -> repo-cert key -> per-run signing key). Format-agnostic:
+# it signs files such as GoReleaser's checksums.txt, not packages; the hashes
+# in checksums.txt then cover every package.
+#
+# One job, so the per-run private key never leaves it: imports the repo-cert
+# key, fails if it's expired or expiring soon, generates a 1-day per-run key,
+# certifies it, signs each file (<file>.asc), verifies the chain, and uploads
+# the signatures plus pubkey-signing.asc, pubkey-repo.asc, and pubkey-org.asc
+# as an artifact. Only public data leaves the job. Attach the artifact to the
+# draft release with release-modify, using the `release-notes` output.
+#
+# Runs only on a `v*` tag push.
+
 on:
   workflow_call:
     inputs:
-      artifact-name-unsigned-rpms:
-        description: 'Artifact-name for unsigned RPM artifacts'
-        default: 'rpms-unsigned'
+      dist-artifact-name:
+        description: 'Artifact holding the files to sign (e.g. build-release-goreleaser dist-artifact-name)'
+        required: false
         type: string
-      artifact-name-signed-rpms:
-        description: 'Name for the signed RPM composite artifact'
+        default: 'goreleaser-dist'
+      files:
+        description: 'Space- or newline-separated file names at the artifact root to sign'
+        required: false
         type: string
-        default: 'rpms-signed'
-      artifact-name-public-keys:
-        description: 'Name for the public key composite artifact'
+        default: 'checksums.txt'
+      signatures-artifact-name:
+        description: 'Artifact name for the signatures and public keys'
+        required: false
         type: string
-        default: 'public-keys'
+        default: 'release-signatures'
+      key-expiry-warn-days:
+        description: 'Fail when the repo-cert key expires within this many days'
+        required: false
+        type: number
+        default: 30
+    secrets:
+      repo-cert-key:
+        description: 'Repo-cert secret key (certify-only primary), ASCII-armored or base64 of armored (e.g. GPG_REPO_CERT_KEY_B64)'
+        required: true
+      master-public-key:
+        description: 'ASCII-armored org master public key (e.g. the MASTER_PUBLIC_ASC org secret)'
+        required: true
+      master-fingerprint:
+        description: 'Full fingerprint of the org master key (e.g. the MASTER_FPR org secret)'
+        required: true
+    outputs:
+      release-notes:
+        description: 'Markdown verification instructions for the release notes'
+        value: ${{ jobs.gpg-sign-artifacts.outputs.release-notes }}
 
 permissions:
-  contents: read   # baseline for checkout
+  contents: read   # baseline; artifacts need no extra permissions
 
 jobs:
-  artifacts-sign:
-    runs-on: ubuntu-latest
-    container:
-      image: rockylinux:9
+  gpg-sign-artifacts:
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    outputs:
+      release-notes: ${{ steps.notes.outputs.release-notes }}
     steps:
-      - name: Deprecation warning
+      - name: Check trigger
+        if: ${{ github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
         run: |
-          echo "::warning title=Deprecated workflow::gpg-sign-artifacts.yml is deprecated; migrate to nfpm package signing in build-release-goreleaser.yml (gpg-key secret)."
+          echo "::error::gpg-sign-artifacts runs on a v* tag push; got ${EVENT} on ${REF}"
+          exit 1
 
-      - name: Install build dependencies
-        run: |
-          dnf install -y -q git rpmlint
-
-      - name: Mark workspace as a safe git directory
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          fetch-tags: true
-          fetch-depth: 0
-
-      - name: Check for repo key expiry
-        uses: OpenCHAMI/github-actions/actions/gpg-check-key-expiration@v3.7
-        with:
-          repo-key-armored-b64: ${{ secrets.GPG_REPO_KEY_B64 }}
-          warn-days: '30'
-
-      - name: Configure GPG release keys
-        id: gpg
-        uses: OpenCHAMI/github-actions/actions/gpg-configure-release-keys@v3.7
-        with:
-          repo-cert-key-armored-b64: ${{ secrets.GPG_REPO_CERT_KEY_B64 }}
-          master-public-key-asc: ${{ secrets.MASTER_PUBLIC_ASC }}
-          master-fpr: ${{ secrets.MASTER_FPR }}
-          name: '${{ github.repository }} Release'
-          comment: 'ephemeral key for ${{ github.ref_name }}'
-          email: 'release@packages.openchami.org'
-          expire-days: '1'
-
-      - name: Download RPM artifacts requested for release
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ inputs.artifact-name-unsigned-rpms }}
+          name: ${{ inputs.dist-artifact-name }}
           path: dist
 
-      - name: Sign rpms
-        id: rpmsign
-        uses: OpenCHAMI/github-actions/actions/gpg-sign-rpm@v3.7
-        with:
-          resign: true
-          gnupg-home: ${{ steps.gpg.outputs.gnupg-home }}
-          gpg-fingerprint: ${{ steps.gpg.outputs.ephemeral-fingerprint }}
-
-      - name: Verify trust chain
-        uses: OpenCHAMI/github-actions/actions/gpg-verify-trust-chain@v3.7
-        with:
-          master-public-key: ${{ secrets.MASTER_PUBLIC_ASC }}
-          require-master: true
-          repo-public-key-file: ${{ steps.gpg.outputs.repo-cert-public-key-file }}
-          ephemeral-public-key-file: ${{ steps.gpg.outputs.ephemeral-public-key-file }}
-          rpm-dir: .
-
-      - name: rpmlint
-        run: rpmlint "$(find . -name '*.rpm')" || true
-
-      - name: Upload signed RPMs
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ inputs.artifact-name-signed-rpms }}
-          path: '**/*.rpm'
-          overwrite: true
-
-      - name: Upload public signing keys
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ inputs.artifact-name-public-keys }}
-          path: '**/*.pub.asc'
-          overwrite: true
-
-      - name: Cleanup GNUPGHOME
-        if: always()
+      - name: Check files
         env:
-          GNUPGHOME_PATH: ${{ steps.gpg.outputs.gnupg-home }}
+          FILES: ${{ inputs.files }}
+          DIST: ${{ inputs.dist-artifact-name }}
+        run: |
+          set -euo pipefail -o noglob
+          failed=false
+          # shellcheck disable=SC2086 # intentional word splitting
+          set -- $FILES
+          [[ $# -gt 0 ]] || { echo "::error::No files to sign."; exit 1; }
+          for f in "$@"; do
+            # Release files are flat, so signatures are too.
+            if [[ "$f" == */* ]]; then
+              echo "::error::${f}: files must be names at the artifact root."
+              failed=true
+            elif [[ ! -f "dist/${f}" ]]; then
+              echo "::error::${f} isn't in the ${DIST} artifact."
+              failed=true
+            fi
+          done
+          [[ "$failed" == false ]] || exit 1
+
+      - name: Install GnuPG
         run: |
           set -euo pipefail
-          [ -n "$GNUPGHOME_PATH" ] && [ -d "$GNUPGHOME_PATH" ] || exit 0
-          find "$GNUPGHOME_PATH" -type f -exec shred -u {} + 2>/dev/null || true
-          rm -rf "$GNUPGHOME_PATH"
+          command -v gpg >/dev/null 2>&1 && exit 0
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends gnupg
+
+      - name: Create and certify the signing key
+        env:
+          REPO_CERT_KEY: ${{ secrets.repo-cert-key }}
+          WARN_DAYS: ${{ inputs.key-expiry-warn-days }}
+          TAG: ${{ github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          umask 077
+          GNUPGHOME="${RUNNER_TEMP}/gnupg"
+          mkdir -m 700 "$GNUPGHOME"
+          export GNUPGHOME
+          echo "GNUPGHOME=${GNUPGHOME}" >> "$GITHUB_ENV"
+
+          if [[ "$REPO_CERT_KEY" == *"-----BEGIN PGP PRIVATE KEY BLOCK-----"* ]]; then
+            printf '%s\n' "$REPO_CERT_KEY" | gpg --batch --quiet --import
+          else
+            printf '%s' "$REPO_CERT_KEY" | base64 -d | gpg --batch --quiet --import
+          fi
+
+          # The repo-cert key is a certify-only primary; a stub (sec#), as in
+          # a signing-subkey export (GPG_REPO_KEY_B64), can't certify.
+          sec=$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1=="sec"')
+          [[ $(grep -c . <<< "$sec") -eq 1 ]] || { echo "::error::repo-cert-key must hold exactly one secret key."; exit 1; }
+          IFS=: read -r -a f <<< "$sec"
+          if [[ "${f[1]}" == r ]]; then
+            echo "::error::The repo-cert key is revoked; rotate it."
+            exit 1
+          fi
+          if [[ "${f[14]:-}" == "#" || "${f[11],,}" != *c* ]]; then
+            echo "::error::repo-cert-key has no usable certify key; pass the repo-cert key (GPG_REPO_CERT_KEY_B64), not the signing subkeys."
+            exit 1
+          fi
+          repo_fpr=$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1=="fpr" {print $10; exit}')
+          expires=${f[6]}
+          if [[ -n "$expires" ]]; then
+            left=$(( (expires - $(date +%s)) / 86400 ))
+            if (( left < WARN_DAYS )); then
+              echo "::error::Repo-cert key ${repo_fpr} expires $(date -u -d "@${expires}" +%F) (${left} days); renew or rotate it."
+              exit 1
+            fi
+          fi
+          echo "Repo-cert key ${repo_fpr}"
+
+          # Per-run signing key: no passphrase, since it lives only in this
+          # job's GNUPGHOME and is shredded at the end; 1-day expiry.
+          signing_fpr=$(gpg --batch --status-fd 1 --passphrase '' --pinentry-mode loopback \
+              --quick-generate-key "${GITHUB_REPOSITORY} Release (${TAG}, run ${RUN_ID}) <release@packages.openchami.org>" \
+              ed25519 sign 1d \
+            | awk '$2=="KEY_CREATED" {print $4}')
+          [[ -n "$signing_fpr" ]] || { echo "::error::Failed to generate the signing key."; exit 1; }
+          gpg --batch --yes --quick-sign-key --local-user "$repo_fpr" "$signing_fpr" >/dev/null
+          gpg --batch --yes --delete-secret-keys "$repo_fpr"
+          echo "Signing key ${signing_fpr}"
+          {
+            echo "REPO_FPR=${repo_fpr}"
+            echo "SIGNING_FPR=${signing_fpr}"
+          } >> "$GITHUB_ENV"
+
+      - name: Sign files and export public keys
+        env:
+          FILES: ${{ inputs.files }}
+          MASTER_PUBLIC_KEY: ${{ secrets.master-public-key }}
+        run: |
+          set -euo pipefail -o noglob
+          # shellcheck disable=SC2086 # intentional word splitting
+          for f in $FILES; do
+            gpg --batch --yes --armor --local-user "$SIGNING_FPR" --detach-sign --output "dist/${f}.asc" "dist/${f}"
+          done
+          # Certifications travel inside the exported public keys.
+          gpg --batch --armor --export "$SIGNING_FPR" > dist/pubkey-signing.asc
+          gpg --batch --armor --export "$REPO_FPR" > dist/pubkey-repo.asc
+          printf '%s\n' "$MASTER_PUBLIC_KEY" > dist/pubkey-org.asc
+
+      - name: Shred GNUPGHOME
+        if: always()
+        run: |
+          [[ -n "${GNUPGHOME:-}" && -d "$GNUPGHOME" ]] || exit 0
+          find "$GNUPGHOME" -type f -exec shred -u {} + 2>/dev/null || true
+          rm -rf "$GNUPGHOME"
+
+      - name: List signed files
+        id: signed
+        env:
+          FILES: ${{ inputs.files }}
+        run: |
+          set -euo pipefail -o noglob
+          # shellcheck disable=SC2086 # intentional word splitting
+          {
+            echo "files=$(printf 'dist/%s ' $FILES)"
+            echo 'signatures<<EOF'
+            printf 'dist/%s.asc\n' $FILES
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify trust chain
+        uses: OpenCHAMI/github-actions/actions/gpg-verify-trust-chain@b95f3bd7ce57fcdf59b16df74afefea57811471c # v4.0
+        with:
+          public-key-master: ${{ secrets.master-public-key }}
+          fingerprint-master: ${{ secrets.master-fingerprint }}
+          public-key-file-repo: dist/pubkey-repo.asc
+          public-key-file-signing: dist/pubkey-signing.asc
+          files: ${{ steps.signed.outputs.files }}
+          repo: ${{ github.repository }}
+
+      - name: Upload signatures and public keys
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.signatures-artifact-name }}
+          path: |
+            ${{ steps.signed.outputs.signatures }}
+            dist/pubkey-*.asc
+          if-no-files-found: error
+
+      - name: Release notes
+        id: notes
+        env:
+          FILES: ${{ inputs.files }}
+        run: |
+          set -euo pipefail -o noglob
+          # shellcheck disable=SC2086 # intentional word splitting
+          set -- $FILES
+          {
+            echo 'release-notes<<EOF'
+            cat <<'NOTES'
+          ## Verify this release
+
+          The files below are signed by a per-run key, certified through OpenCHAMI's release key chain:
+
+          ```
+          offline org master (pubkey-org.asc)
+            └─ certifies repo key (pubkey-repo.asc)
+                 └─ certifies per-run signing key (pubkey-signing.asc)
+                      └─ signs each file (<file>.asc)
+          ```
+
+          1. Download the files, their `.asc` signatures, and the three `pubkey-*.asc` keys. Check that `pubkey-org.asc` matches OpenCHAMI's published master fingerprint.
+          2. Import the keys into a scratch keyring and check the certifications (master on the repo key, repo key on the signing key):
+             ```bash
+             export GNUPGHOME=$(mktemp -d)
+             gpg --import pubkey-org.asc pubkey-repo.asc pubkey-signing.asc
+             gpg --check-sigs
+             ```
+          3. Verify the signatures:
+             ```bash
+          NOTES
+            for f in "$@"; do
+              printf '   gpg --verify %s.asc %s\n' "$f" "$f"
+            done
+            echo '   ```'
+            if [[ " $* " == *" checksums.txt "* ]]; then
+              cat <<'NOTES'
+          4. Check the hashes of the files you downloaded:
+             ```bash
+             sha256sum --check --ignore-missing checksums.txt
+             ```
+          NOTES
+            fi
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"

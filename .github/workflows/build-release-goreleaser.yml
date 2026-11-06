@@ -10,19 +10,16 @@ name: build-release-goreleaser
 # - PR (`pull_request` event): tags HEAD locally as `pr-<number>` and pushes
 #   the resulting images (e.g. `:pr-12`). No GitHub release, no packages
 #   (nfpm is skipped; use build-check-goreleaser to validate PR packages), no
-#   signing, no attestation. Fork PRs build but publish nothing.
-# - Release (`v*` tag push): semver images, (optionally signed) packages, a
+#   attestation. Fork PRs build but publish nothing.
+# - Release (`v*` tag push): semver images, unsigned packages, a
 #   GitHub release (draft by default) with GitHub-generated notes, and build
 #   provenance attestations for the binaries and every published image.
 #
 # Contract with the caller's .goreleaser.yaml: these environment variables
 # are always set (empty when unused), so templates can reference them:
-#   GIT_STATE, BUILD_HOST, GO_VERSION, BUILD_USER, IS_PR_BUILD, GPG_KEY_PATH
-# Packages are signed when `key_file: "{{ .Env.GPG_KEY_PATH }}"` is set in
-# the nfpm config and the `gpg-key` secret is passed (release mode only). The
-# matching public key is derived from it, attached to the release as
-# gpg-public-key.asc, and included in the dist artifact, where
-# validate-packages picks it up to verify signatures.
+#   GIT_STATE, BUILD_HOST, GO_VERSION, BUILD_USER, IS_PR_BUILD
+# Packages aren't signed here; gpg-sign-artifacts signs checksums.txt, which
+# covers them.
 
 on:
   workflow_call:
@@ -52,7 +49,7 @@ on:
         type: number
         default: 0
       release-draft:
-        description: 'Create the GitHub release as a draft (publish it later with publish-release)'
+        description: 'Create the GitHub release as a draft (publish it later with release-publish)'
         required: false
         type: boolean
         default: true
@@ -76,13 +73,6 @@ on:
         required: false
         type: string
         default: 'goreleaser-dist'
-    secrets:
-      gpg-key:
-        description: 'ASCII-armored (or base64-encoded armored) private key for package signing; release mode only'
-        required: false
-      gpg-key-passphrase:
-        description: 'Passphrase for gpg-key (handed to nfpm as NFPM_PASSPHRASE)'
-        required: false
     outputs:
       version:
         description: 'Version GoReleaser built'
@@ -176,37 +166,6 @@ jobs:
         run: |
           gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
             -F tag_name="${TAG}" --jq .body > "${RUNNER_TEMP}/release-notes.md"
-      - name: Prepare GPG key
-        id: signing
-        if: ${{ env.IS_PR_BUILD == 'false' }}
-        env:
-          GPG_KEY: ${{ secrets.gpg-key }}
-        run: |
-          if [[ -z "$GPG_KEY" ]]; then
-            echo "No gpg-key secret; packages will not be signed."
-            echo "key-path=" >> "$GITHUB_OUTPUT"
-            echo "public-key-path=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          key="${RUNNER_TEMP}/gpg-key.asc"
-          umask 077
-          if [[ "$GPG_KEY" == *"-----BEGIN PGP PRIVATE KEY BLOCK-----"* ]]; then
-            printf '%s\n' "$GPG_KEY" > "$key"
-          else
-            printf '%s' "$GPG_KEY" | base64 -d > "$key"
-          fi
-          # Derive the public key for the release and for signature checks.
-          # Importing a secret key doesn't need its passphrase.
-          pub="${RUNNER_TEMP}/gpg-public-key.asc"
-          gnupg=$(mktemp -d)
-          gpg --homedir "$gnupg" --batch --quiet --import "$key"
-          gpg --homedir "$gnupg" --batch --armor --export > "$pub"
-          rm -rf "$gnupg"
-          test -s "$pub"
-          {
-            echo "key-path=${key}"
-            echo "public-key-path=${pub}"
-          } >> "$GITHUB_OUTPUT"
       - name: Assemble GoReleaser arguments
         id: args
         env:
@@ -247,20 +206,10 @@ jobs:
           BUILD_HOST: ${{ steps.build-env.outputs.build-host }}
           GO_VERSION: ${{ steps.build-env.outputs.go-version }}
           BUILD_USER: ${{ steps.build-env.outputs.build-user }}
-          GPG_KEY_PATH: ${{ steps.signing.outputs.key-path }}
-          # GPG key passphrase. The name is fixed by nfpm, which only reads the
-          # passphrase from NFPM_[ID_][FORMAT_]PASSPHRASE.
-          NFPM_PASSPHRASE: ${{ github.event_name != 'pull_request' && secrets.gpg-key-passphrase || '' }}
         with:
           distribution: goreleaser
           version: ${{ inputs.goreleaser-version }}
           args: ${{ steps.args.outputs.args }}
-      - name: Remove GPG key
-        if: ${{ always() && steps.signing.outputs.key-path != '' }}
-        env:
-          KEY_PATH: ${{ steps.signing.outputs.key-path }}
-        run: shred -u "$KEY_PATH" 2>/dev/null || rm -f "$KEY_PATH"
-
       - name: Read GoReleaser metadata
         id: metadata
         env:
@@ -285,18 +234,6 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ inputs.attestation-subject-path }}
-      - name: Publish GPG public key
-        if: ${{ steps.signing.outputs.public-key-path != '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-          PUBLIC_KEY_PATH: ${{ steps.signing.outputs.public-key-path }}
-        run: |
-          cp "$PUBLIC_KEY_PATH" dist/gpg-public-key.asc
-          if [[ "$SKIP_PUBLISH" == false ]]; then
-            gh release upload "$TAG" dist/gpg-public-key.asc --clobber --repo "$GITHUB_REPOSITORY"
-          fi
-
       - name: Upload dist
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -307,7 +244,6 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/*checksums.txt
-            dist/gpg-public-key.asc
           if-no-files-found: warn
 
   attest-images:
