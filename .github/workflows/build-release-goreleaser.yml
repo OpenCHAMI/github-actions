@@ -39,6 +39,7 @@ on:
         description: 'GoReleaser version to run'
         required: false
         type: string
+        # renovate: datasource=github-releases depName=goreleaser/goreleaser
         default: 'v2.18.2'
       build-deps:
         description: 'Space-separated apt packages to install before building (e.g. "gcc-aarch64-linux-gnu libc6-dev-arm64-cross")'

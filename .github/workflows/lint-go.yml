@@ -24,7 +24,8 @@ on:
         description: 'golangci-lint release to run'
         required: false
         type: string
-        default: 'latest'
+        # renovate: datasource=github-releases depName=golangci/golangci-lint
+        default: 'v2.14.0'
       runner:
         description: 'Runner for the golangci-lint job (default: ubuntu-slim)'
         required: false
