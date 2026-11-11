@@ -204,7 +204,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Verify trust chain
-        uses: OpenCHAMI/github-actions/actions/gpg-verify-trust-chain@bf43cd8eb16cc64b884e382e34bd51cbb961a589 # pre-v4.0 (OpenCHAMI/github-actions#58)
+        uses: OpenCHAMI/github-actions/actions/gpg-verify-trust-chain@d0dfb75bd24186f9f1d91c3790077058ccc4c4ed # pre-v4.0 (OpenCHAMI/github-actions#58)
         with:
           public-key-master: ${{ secrets.master-public-key }}
           fingerprint-master: ${{ secrets.master-fingerprint }}
