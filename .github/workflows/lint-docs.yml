@@ -10,7 +10,7 @@ name: lint-docs
 #   (category lint-docs), so GitHub annotates the PR and closes each alert
 #   once a later commit fixes the link. Fork PRs can't upload, so they only
 #   get the job summary.
-# - Default branch (push, schedule, or dispatch): one open issue with the
+# - Default branch (push or schedule): one open issue with the
 #   report, created or updated each run, and closed once the links are fixed.
 #   The SARIF upload also runs, so PR alerts have a baseline to compare with.
 #
@@ -51,6 +51,10 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
+          if [[ ! "$EVENT" =~ ^(pull_request|pull_request_target|push|schedule)$ ]]; then
+            echo "::error::lint-docs runs on pull_request, push, and schedule; not ${EVENT}."
+            exit 1
+          fi
           check=true
           report_issue=false
           if [[ "$EVENT" == pull_request || "$EVENT" == pull_request_target ]]; then
