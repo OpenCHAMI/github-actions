@@ -30,6 +30,8 @@ Reusable GitHub Actions for CI/CD.
 - [`.github/workflows/lint-codegen-fabrica.yml`](docs/workflows.md#lint-codegen-fabrica): Reusable workflow that fails when a Fabrica project's committed generated code is out of date
 - [`.github/workflows/lint-renovate.yml`](docs/workflows.md#lint-renovate): Reusable workflow that validates the caller's Renovate config
 - [`.github/workflows/lint-docs.yml`](docs/workflows.md#lint-docs): Reusable workflow that checks docs for broken links (lychee), reporting on PRs and in an issue
+- [`.github/workflows/lint-makefile-common.yml`](docs/workflows.md#lint-makefile-common): Reusable workflow that fails when a repo's vendored `Makefile.common` differs from the latest release
+- [`Makefile.common`](docs/makefile-common.md): Shared Makefile targets that OpenCHAMI repos vendor and include
 
 ### Workflow naming
 
@@ -43,6 +45,7 @@ just sorts them to the top.
 - [GoReleaser](docs/goreleaser.md): how the GoReleaser workflows use your `.goreleaser.yaml`
 - [Signing releases](docs/signing.md): the keys, the signing flow, and verifying a release
 - [Distribution](docs/distribution.md): how signed packages reach dnf/apt repositories (planned)
+- [Makefile.common](docs/makefile-common.md): the shared Makefile and its drift check
 
 > [!WARNING]
 > **TODO:** the central signing repo doesn't have a name yet. The docs call it `todo-signing-repo`;

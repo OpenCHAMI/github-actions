@@ -273,6 +273,22 @@ jobs:
     #   issue-title: Docs link check found broken links
 ```
 
+### lint-makefile-common
+Fails when the repo's vendored `Makefile.common` differs from the copy in the latest release of this repository (read at the release's commit SHA), and prints the diff. Takes no inputs. Make it a required check only if drift should block merging.
+
+**Usage:**
+```yaml
+name: Lint Makefile.common
+on:
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1'   # catch new releases
+
+jobs:
+  lint-makefile-common:
+    uses: OpenCHAMI/github-actions/.github/workflows/lint-makefile-common.yml@v4.0
+```
+
 ## Testing and security
 
 ### test-unit-go

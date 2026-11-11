@@ -65,6 +65,13 @@
       "matchStrings": ["#\\s+golangci-lint-version: (?<currentValue>v\\d+\\.\\d+\\.\\d+)"],
       "depNameTemplate": "golangci/golangci-lint",
       "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Container images for make lint-ci",
+      "managerFilePatterns": ["/^Makefile\\.common$/"],
+      "matchStrings": ["[A-Z_]+_IMAGE \\?= (?<depName>[^:\\s]+):(?<currentValue>[^\\s@]+)"],
+      "datasourceTemplate": "docker"
     }
   ]
 }
