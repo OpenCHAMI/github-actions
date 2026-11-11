@@ -60,7 +60,7 @@ certified_by() {
         # Close the previous user ID: certified when its newest live
         # certification is newer than its newest revocation.
         function end_uid() { if (ok && cert > rev) found=1; ok=0; cert=rev=0 }
-        $1=="pub" || $1=="sub" { end_uid(); next }
+        $1=="pub" || $1=="sub" || $1=="uat" { end_uid(); next }
         # A new user ID: it must carry the expected name and be usable itself.
         $1=="uid" {
           end_uid(); name=tolower($10)
