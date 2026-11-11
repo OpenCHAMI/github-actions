@@ -15,7 +15,7 @@ Verifies OpenCHAMI's release trust chain and the files it signs (key names as in
 4. Each file in `files` has a good signature at `<file>.asc` from the release
    key.
 
-No key may be revoked or expired, so a signature whose 1-day release key has
+No key or certification may be revoked or expired, so a signature whose 1-day release key has
 expired fails. Each key file must hold exactly one key. Every failure is
 reported before the step fails. Format-agnostic: it verifies files such as
 `checksums.txt`, not packages. Pass the root public key from a trusted
@@ -37,3 +37,7 @@ admits signed releases.
 ```
 
 Outputs `fingerprint-master`, `fingerprint-repo`, and `fingerprint-signing`.
+
+The checks live in [`scripts/gpg-verify-trust-chain.sh`](../../scripts/gpg-verify-trust-chain.sh),
+so they can also run outside this action (e.g. fetched by commit SHA). It takes
+the inputs as environment variables and needs `gpg`; see its header.
