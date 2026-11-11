@@ -26,8 +26,9 @@ declarative config that produces, in one run:
 
 Standardizing on it means one mental model across repos, one example config to maintain, and
 reusable workflows that stay small because GoReleaser does the work. The same config also runs
-locally (`goreleaser release --snapshot --clean`), so what you build on your machine is what CI
-builds. We use the open-source edition only; nothing depends on GoReleaser Pro.
+locally (`make release-snapshot`, `make build-packages` from [Makefile.common](makefile-common.md)),
+so what you build on your machine is what CI builds. We use the open-source edition only; nothing
+depends on GoReleaser Pro.
 
 ## What it means for a Go repo
 
@@ -61,8 +62,8 @@ The [README's combined example](../README.md#example-workflow-combined) shows th
 - **No Go module cache on release builds.** Published artifacts must not come from a cache that a
   PR could have poisoned.
 - **A fixed environment contract.** The workflows always set `IS_PR_BUILD`, `GIT_STATE`,
-  `BUILD_HOST`, `GO_VERSION`, and `BUILD_USER`; export the same names to use one config in CI
-  and locally.
+  `BUILD_HOST`, `GO_VERSION`, and `BUILD_USER`, and `Makefile.common` exports the same names, so
+  one config works in CI and locally.
 - **Provenance comes for free.** Release builds attest the binaries and every published image.
 - **Publishing to dnf/apt repositories is out of scope.** GoReleaser only attaches packages to the
   GitHub release; a separate central repo verifies, re-signs, and publishes them.
