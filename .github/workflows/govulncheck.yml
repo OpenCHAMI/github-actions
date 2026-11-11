@@ -10,7 +10,8 @@ name: govulncheck
 # Findings go to code scanning as SARIF (category govulncheck), with called
 # vulnerabilities placed at their call site, so GitHub annotates PRs that add
 # or change such a call. Fork PRs can't upload, so they only get the job
-# summary.
+# summary. Job summaries are public, so only PR runs list findings there;
+# other runs (e.g. the default branch) leave the details to code scanning.
 #
 # Pair with the actionlint/zizmor lint workflow for a "static security
 # baseline" wave; pair with dependency-review for PR-time gating.
@@ -95,15 +96,18 @@ jobs:
         env:
           BLOB_URL: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DETAIL: ${{ github.event_name == 'pull_request' }}
         run: |
           set -euo pipefail
-          jq -r --arg blob "$BLOB_URL" --arg run "$RUN_URL" '
+          jq -r --arg blob "$BLOB_URL" --arg run "$RUN_URL" --argjson detail "$DETAIL" '
             [.runs[] | (.tool.driver.rules // [] | INDEX(.id)) as $rules
              | (.results // [])[] | select(.level == "error")
              | {id: .ruleId, rule: $rules[.ruleId], message: .message.text,
                 path: .locations[0].physicalLocation.artifactLocation.uri,
                 line: .locations[0].physicalLocation.region.startLine}]
-            | if length == 0 then "No called vulnerabilities found." else
+            | if length == 0 then "No called vulnerabilities found."
+              elif $detail | not then "Found called vulnerabilities; details are in code scanning (category `govulncheck`)."
+              else
                 "Found \(map(.id) | unique | length) called vulnerabilities ([run](\($run))).",
                 (group_by(.id)[] | "", "### [\(.[0].id)](https://pkg.go.dev/vuln/\(.[0].id))", "",
                   (.[0].rule.fullDescription.text // .[0].message), "",
@@ -128,6 +132,6 @@ jobs:
       - name: Fail on called vulnerabilities
         if: ${{ steps.report.outputs.called == 'true' }}
         run: |
-          echo "::error::govulncheck found called vulnerabilities; see the job summary."
+          echo "::error::govulncheck found called vulnerabilities; see the job summary or code scanning."
           exit 1
 
